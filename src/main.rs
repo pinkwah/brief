@@ -3,11 +3,12 @@ use nix::sched::{unshare, CloneFlags};
 use nix::sys::signal::{kill, Signal};
 use nix::sys::wait::{waitpid, WaitPidFlag, WaitStatus};
 use nix::unistd::{self, fork, ForkResult};
+use std::collections::HashSet;
 use std::env;
 use std::ffi::OsStr;
 use std::fs;
-use std::io;
 use std::io::prelude::*;
+use std::io::{self, BufReader};
 use std::os::unix::fs::symlink;
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
@@ -37,14 +38,15 @@ fn bind_mount(source: &Path, dest: &Path) {
 
 pub struct RunChroot<'a> {
     rootdir: &'a Path,
+    nixdir: &'a Path,
 }
 
 impl<'a> RunChroot<'a> {
-    fn new(rootdir: &'a Path) -> Self {
-        Self { rootdir }
+    fn new(rootdir: &'a Path, nixdir: &'a Path) -> Self {
+        Self { rootdir, nixdir }
     }
 
-    fn bind_mount_directory(&self, entry: &fs::DirEntry) {
+    fn bind_mount_directory(&self, entry: &fs::DirEntry, root: &Path) {
         let mountpoint = self.rootdir.join(entry.file_name());
 
         // if the destination doesn't exist we can proceed as normal
@@ -64,17 +66,17 @@ impl<'a> RunChroot<'a> {
                     panic!("failed to list dir {}: {}", entry.path().display(), err)
                 });
 
-                let child = RunChroot::new(&mountpoint);
+                let child = RunChroot::new(&mountpoint, self.nixdir);
                 for entry in dir {
                     let entry = entry.expect("error while listing subdir");
-                    child.bind_mount_direntry(&entry);
+                    child.bind_mount_direntry(&entry, &root);
                 }
             }
         }
     }
 
-    fn bind_mount_file(&self, entry: &fs::DirEntry) {
-        let mountpoint = self.rootdir.join(entry.file_name());
+    fn bind_mount_file(&self, entry: &fs::DirEntry, path: &Path) {
+        let mountpoint = self.rootdir.join(path).join(entry.file_name());
         if mountpoint.exists() {
             return;
         }
@@ -84,8 +86,8 @@ impl<'a> RunChroot<'a> {
         bind_mount(&entry.path(), &mountpoint)
     }
 
-    fn mirror_symlink(&self, entry: &fs::DirEntry) {
-        let link_path = self.rootdir.join(entry.file_name());
+    fn mirror_symlink(&self, entry: &fs::DirEntry, path: &Path) {
+        let link_path = self.rootdir.join(path).join(entry.file_name());
         if link_path.exists() {
             return;
         }
@@ -101,22 +103,65 @@ impl<'a> RunChroot<'a> {
         });
     }
 
-    fn bind_mount_direntry(&self, entry: &fs::DirEntry) {
+    fn symlink(&self, source: &Path, target: &Path) {
+        let target = self.rootdir.join(target);
+        target
+            .parent()
+            .and_then(|parent| fs::create_dir_all(parent).ok())
+            .unwrap_or_else(|| {
+                panic!("Could not create parent dirs of {}", target.display());
+            });
+        symlink(source, &target).unwrap_or_else(|err| {
+            panic!(
+                "Could not create symbolic link from {} to {}: {}",
+                source.display(),
+                target.display(),
+                err
+            );
+        });
+    }
+
+    fn resolve(&self, path: &PathBuf) -> io::Result<PathBuf> {
+        let mut path = path.to_path_buf();
+        let mut cwd = env::current_dir()?;
+
+        loop {
+            if !path.is_absolute() {
+                path = cwd.join(path);
+            }
+            if !path.is_symlink() {
+                return Ok(path.to_path_buf());
+            }
+            let target = fs::read_link(&path)?.to_str().unwrap().to_owned();
+
+            cwd = match path.parent() {
+                Some(x) => x.to_path_buf(),
+                _ => PathBuf::from("/"),
+            };
+            path = if target.starts_with("/nix/") {
+                self.nixdir.join(PathBuf::from(&target["/nix/".len()..]))
+            } else {
+                PathBuf::from(&target)
+            };
+        }
+    }
+
+    fn bind_mount_direntry(&self, entry: &fs::DirEntry, root: &Path) {
         let path = entry.path();
         let stat = entry
             .metadata()
             .unwrap_or_else(|err| panic!("cannot get stat of {}: {}", path.display(), err));
 
         if stat.is_dir() {
-            self.bind_mount_directory(entry);
+            self.bind_mount_directory(entry, root);
         } else if stat.is_file() {
-            self.bind_mount_file(entry);
+            self.bind_mount_file(entry, root);
         } else if stat.file_type().is_symlink() {
-            self.mirror_symlink(entry);
+            self.mirror_symlink(entry, root);
         }
     }
 
-    fn run_chroot(&self, nixdir: &Path, cmd: &str, args: &[String]) {
+    fn run_chroot(&self, cmd: &str, args: &[String]) {
         let cwd = env::current_dir().expect("cannot get current working directory");
 
         let uid = unistd::getuid();
@@ -126,24 +171,28 @@ impl<'a> RunChroot<'a> {
 
         // create /run/opengl-driver/lib in chroot, to behave like NixOS
         // (needed for nix pkgs with OpenGL or CUDA support to work)
-        let ogldir = nixdir.join("var/nix/opengl-driver/lib");
-        if ogldir.is_dir() {
-            let ogl_mount = self.rootdir.join("run/opengl-driver/lib");
-            fs::create_dir_all(&ogl_mount)
-                .unwrap_or_else(|err| panic!("failed to create {}: {}", &ogl_mount.display(), err));
-            bind_mount(&ogldir, &ogl_mount);
+        if let Ok(ogldir) = self.resolve(&self.nixdir.join("var/nix/opengl-driver")) {
+            let ogldir = ogldir.join("lib");
+            if ogldir.is_dir() {
+                let ogl_mount = self.rootdir.join("run/opengl-driver/lib");
+                fs::create_dir_all(&ogl_mount).unwrap_or_else(|err| {
+                    panic!("failed to create {}: {}", &ogl_mount.display(), err)
+                });
+                bind_mount(&ogldir, &ogl_mount);
+            }
         }
 
         // bind the rest of / stuff into rootdir
+        let excepts = ["nix", "bin", "usr", "lib", "lib64", "etc"].map(|x| OsStr::new(x));
         let nix_root = PathBuf::from("/");
         let dir = fs::read_dir(&nix_root).expect("failed to list /nix directory");
         for entry in dir {
             let entry = entry.expect("error while listing from /nix directory");
             // do not bind mount an existing nix installation
-            if entry.file_name() == OsStr::new("nix") {
+            if excepts.iter().any(|except| entry.file_name() == *except) {
                 continue;
             }
-            self.bind_mount_direntry(&entry);
+            self.bind_mount_direntry(&entry, Path::new(""));
         }
 
         // mount the store
@@ -151,13 +200,78 @@ impl<'a> RunChroot<'a> {
         fs::create_dir(&nix_mount)
             .unwrap_or_else(|err| panic!("failed to create {}: {}", &nix_mount.display(), err));
         mount(
-            Some(nixdir),
+            Some(self.nixdir),
             &nix_mount,
             Some("none"),
             MsFlags::MS_BIND | MsFlags::MS_REC,
             NONE,
         )
-        .unwrap_or_else(|err| panic!("failed to bind mount {} to /nix: {}", nixdir.display(), err));
+        .unwrap_or_else(|err| {
+            panic!(
+                "failed to bind mount {} to /nix: {}",
+                self.nixdir.display(),
+                err
+            )
+        });
+
+        let nix_profile_path = self
+            .resolve(
+                &PathBuf::from(
+                    env::var("HOME")
+                        .unwrap_or_else(|err| panic!("HOME environment variable not set: {}", err)),
+                )
+                .join(".nix-profile"),
+            )
+            .unwrap();
+
+        // /bin/sh
+        self.symlink(&nix_profile_path.join("bin/sh"), &PathBuf::from("bin/sh"));
+        self.symlink(
+            &nix_profile_path.join("bin/bash"),
+            &PathBuf::from("bin/bash"),
+        );
+
+        // /usr/bin/env
+        self.symlink(
+            &nix_profile_path.join("bin/env"),
+            &PathBuf::from("usr/bin/env"),
+        );
+
+        // /etc
+        let etcdir = nix_profile_path.join("etc");
+        fs::create_dir(self.rootdir.join("etc")).expect("failed to create /etc directory");
+        for entry in
+            fs::read_dir(&etcdir).expect("failed to list user's nix-profile etc/ directory")
+        {
+            let entry = entry.expect("error while listing from user's nix-profile etc/ directory");
+            symlink(
+                entry.path(),
+                self.rootdir.join("etc").join(entry.file_name()),
+            )
+            .unwrap();
+        }
+
+        let etcuserdir = self.resolve(&nix_profile_path.join("etc/pinkwah")).unwrap();
+        for entry in fs::read_dir(&etcuserdir)
+            .expect("failed to list user's nix-profile etc/pinkwah directory")
+        {
+            let entry =
+                entry.expect("error while listing from user's nix-profile etc/pinkwah directory");
+            symlink(
+                entry.path(),
+                self.rootdir.join("etc").join(entry.file_name()),
+            )
+            .unwrap();
+        }
+
+        self.copy_certs();
+        let etcentries = ["resolv.conf", "passwd", "group", "group-"].map(|name| OsStr::new(name));
+        for entry in fs::read_dir("/etc").unwrap() {
+            let entry = entry.expect("error while listing from /etc directory");
+            if etcentries.iter().any(|name| entry.file_name() == *name) {
+                self.bind_mount_direntry(&entry, Path::new("etc"));
+            }
+        }
 
         // chroot
         unistd::chroot(self.rootdir)
@@ -183,17 +297,114 @@ impl<'a> RunChroot<'a> {
             .write_all(format!("{} {} 1", gid, gid).as_bytes())
             .expect("failed to write new gid mapping to /proc/self/gid_map");
 
+        self.tmpfiles();
+
         // restore cwd
         env::set_current_dir(&cwd)
             .unwrap_or_else(|_| panic!("cannot restore working directory {}", cwd.display()));
 
-        let err = process::Command::new(cmd)
+        let new_path = format!("{}/bin:/usr/bin:/bin", nix_profile_path.display());
+        let mut command = process::Command::new(cmd);
+        command
             .args(args)
+            .env_clear()
             .env("NIX_CONF_DIR", "/nix/etc/nix")
-            .exec();
+            .env("SHELL", "/var/home/zohar/.nix-profile/bin/fish")
+            .env("PATH", new_path);
+
+        for var in [
+            "DESKTOP_SESSION",
+            "DISPLAY",
+            "HOME",
+            "LANG",
+            "TERM",
+            "USER",
+            "WAYLAND_DISPLAY",
+            "XAUTHORITY",
+            "XAUTHORITY",
+            "XDG_CONFIG_HOME",
+            "XDG_CURRENT_DESKTOP",
+            "XDG_DATA_DIRS",
+            "XDG_DATA_HOME",
+            "XDG_RUNTIME_DIR",
+            "XDG_SESSION_DESKTOP",
+            "XDG_SESSION_TYPE",
+        ]
+        .iter()
+        {
+            if let Ok(val) = env::var(var) {
+                command.env(var, val);
+            }
+        }
+
+        let err = command.exec();
 
         eprintln!("failed to execute {}: {}", &cmd, err);
         process::exit(1);
+    }
+
+    fn copy_certs(&self) {
+        let paths = [
+            "ssl/certs/ca-certificates.crt",
+            "ssl/certs/ca-bundle.crt",
+            "pki/tls/certs/ca-bundle.crt",
+        ]
+        .map(|path| Path::new(path));
+
+        let found_paths = paths
+            .iter()
+            .map(|path| Path::new("/etc").join(path))
+            .filter(|path| path.is_file())
+            .map(|path| path.canonicalize().unwrap())
+            .collect::<HashSet<_>>();
+
+        if found_paths.is_empty() {
+            eprintln!("Warning: No SSL certificate bundles found on host system");
+            return;
+        }
+
+        if found_paths.len() >= 2 {
+            eprintln!(
+                "Warning: Found {} SSL certificate bundle candidates. Picking the first one.",
+                found_paths.len()
+            );
+        }
+        let found_paths = found_paths.iter().collect::<Vec<_>>();
+
+        let sourcepath = Path::new("/etc").join(found_paths[0]);
+        for path in paths.iter() {
+            let targetpath = self.rootdir.join("etc").join(path);
+            fs::create_dir_all(targetpath.parent().unwrap());
+            fs::copy(&sourcepath, &targetpath);
+        }
+    }
+
+    fn tmpfiles(&self) {
+        let homedir = env::var("HOME").unwrap();
+        let profiledir = self
+            .resolve(&Path::new(&homedir).join(".nix-profile"))
+            .unwrap();
+        for entry in fs::read_dir(profiledir.join("lib/tmpfiles.d")).unwrap() {
+            let path = entry.unwrap().path();
+            if !path.is_file() {
+                continue;
+            }
+            let file = fs::File::open(path).unwrap();
+            let reader = BufReader::new(file);
+
+            for line in reader.lines() {
+                let line = line.unwrap();
+                let vec = line.split_ascii_whitespace().collect::<Vec<_>>();
+                match vec.as_slice() {
+                    ["L+", target, "-", "-", "-", "-", source] => {
+                        fs::create_dir_all(Path::new(target).parent().unwrap_or(Path::new("/")))
+                            .unwrap();
+                        symlink(Path::new(source), Path::new(target)).unwrap();
+                    }
+                    _ => (),
+                };
+            }
+        }
     }
 }
 
@@ -246,7 +457,7 @@ fn main() {
 
     match unsafe { fork() } {
         Ok(ForkResult::Parent { child, .. }) => wait_for_child(&rootdir, child),
-        Ok(ForkResult::Child) => RunChroot::new(&rootdir).run_chroot(&nixdir, &args[2], &args[3..]),
+        Ok(ForkResult::Child) => RunChroot::new(&rootdir, &nixdir).run_chroot(&args[2], &args[3..]),
         Err(e) => {
             eprintln!("fork failed: {}", e);
         }
