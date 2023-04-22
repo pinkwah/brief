@@ -3,6 +3,7 @@ use nix::sched::{unshare, CloneFlags};
 use nix::sys::signal::{kill, Signal};
 use nix::sys::wait::{waitpid, WaitPidFlag, WaitStatus};
 use nix::unistd::{self, fork, ForkResult};
+use resolve_symlink::resolve_symlink;
 use std::collections::HashSet;
 use std::env;
 use std::ffi::OsStr;
@@ -16,6 +17,7 @@ use std::process;
 use std::string::String;
 
 mod mkdtemp;
+mod resolve_symlink;
 
 const NONE: Option<&'static [u8]> = None;
 
@@ -122,28 +124,7 @@ impl<'a> RunChroot<'a> {
     }
 
     fn resolve(&self, path: &PathBuf) -> io::Result<PathBuf> {
-        let mut path = path.to_path_buf();
-        let mut cwd = env::current_dir()?;
-
-        loop {
-            if !path.is_absolute() {
-                path = cwd.join(path);
-            }
-            if !path.is_symlink() {
-                return Ok(path.to_path_buf());
-            }
-            let target = fs::read_link(&path)?.to_str().unwrap().to_owned();
-
-            cwd = match path.parent() {
-                Some(x) => x.to_path_buf(),
-                _ => PathBuf::from("/"),
-            };
-            path = if target.starts_with("/nix/") {
-                self.nixdir.join(PathBuf::from(&target["/nix/".len()..]))
-            } else {
-                PathBuf::from(&target)
-            };
-        }
+        resolve_symlink(self.nixdir, "/nix", &path)
     }
 
     fn bind_mount_direntry(&self, entry: &fs::DirEntry, root: &Path) {
