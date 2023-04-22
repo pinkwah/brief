@@ -15,6 +15,8 @@ fn run_nix_install() {
             "--target",
             TARGET,
             tempdir.to_str().unwrap(),
+            "--no-nix-profile",
+            "--",
             "bash",
             "-c",
             "curl https://nixos.org/nix/install | bash",
