@@ -1,0 +1,3 @@
+#!/usr/bin/env sh
+cd "$(realpath $(dirname $0))/.."
+podman run -it --userns=keep-id -e "HOME=/temphome" -e "CARGO_HOME=$PWD/vendor/cargo" -v "$PWD/tmp:/temphome:rw" -v "$PWD:$PWD" --security-opt label=disable -w $PWD rust cargo "$@"

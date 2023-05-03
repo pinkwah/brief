@@ -1,13 +1,13 @@
 [package]
-name = "nix-user-chroot"
+name = "nixbox"
 description = "Install & Run nix without root permissions"
 license = "MIT"
-version = "1.2.2"
-authors = ["Jörg Thalheim <joerg@thalheim.io>"]
+version = "0.1.0"
+authors = ["Tenne <me@wah.pink>"]
 edition = "2018"
-homepage = "https://github.com/nix-community/nix-user-chroot"
-documentation = "https://github.com/nix-community/nix-user-chroot"
-repository = "https://github.com/nix-community/nix-user-chroot"
+homepage = "https://github.com/pinkwah/nixbox"
+documentation = "https://github.com/pinkwah/nixbox"
+repository = "https://github.com/pinkwah/nixbox"
 
 [dependencies]
 nix = "0.26.2"

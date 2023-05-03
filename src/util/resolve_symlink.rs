@@ -4,12 +4,11 @@ use std::io::Result;
 use std::path::{Path, PathBuf};
 
 pub fn resolve_symlink(
-    mount: impl AsRef<Path>,
-    onto: impl AsRef<Path>,
+    mapping: &(impl AsRef<Path>, impl AsRef<Path>),
     path: impl AsRef<Path>,
 ) -> Result<PathBuf> {
-    let mount = mount.as_ref();
-    let onto = onto.as_ref();
+    let mount = mapping.0.as_ref();
+    let onto = mapping.1.as_ref();
     let path = path.as_ref();
     let mut path = if path.is_absolute() {
         path.to_owned()
@@ -24,7 +23,7 @@ pub fn resolve_symlink(
                     continue;
                 }
 
-                let resolved = resolve_symlink(&mount, &onto, parent)?;
+                let resolved = resolve_symlink(&mapping, parent)?;
                 path = resolved.join(path.strip_prefix(parent).unwrap());
                 break;
             }
@@ -67,7 +66,7 @@ mod tests {
         assert!(Path::new("/bin/sh").is_absolute());
 
         let expect = Path::new("/bin/sh").canonicalize().unwrap();
-        let actual = resolve_symlink("/not-exist", "/mnt", "/bin/sh").unwrap();
+        let actual = resolve_symlink(&("/not-exist", "/mnt"), "/bin/sh").unwrap();
 
         assert_eq!(actual, expect);
     }
@@ -83,7 +82,7 @@ mod tests {
         // Cannot resolve symlink
         assert!(path.join("symlink").canonicalize().is_err());
 
-        let actual = resolve_symlink("/fake-directory", &path, &path.join("symlink")).unwrap();
+        let actual = resolve_symlink(&("/fake-directory", &path), &path.join("symlink")).unwrap();
         assert_eq!(expect, actual);
     }
 
@@ -104,7 +103,7 @@ mod tests {
         // Cannot resolve symlink
         assert!(path.join("symlink/file").canonicalize().is_err());
 
-        let actual = resolve_symlink("/fake-directory", &path, &path.join("symlink/file")).unwrap();
+        let actual = resolve_symlink(&("/fake-directory", &path), &path.join("symlink/file")).unwrap();
         assert_eq!(expect, actual);
     }
 
@@ -117,7 +116,7 @@ mod tests {
 
         let expect = path.join("symlink/file").canonicalize().unwrap_err();
         let actual =
-            resolve_symlink("/fake-directory", &path, &path.join("symlink/file")).unwrap_err();
+            resolve_symlink(&("/fake-directory", &path), &path.join("symlink/file")).unwrap_err();
         assert_eq!(expect.kind(), actual.kind());
     }
 }

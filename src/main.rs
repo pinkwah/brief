@@ -1,87 +1,118 @@
 mod bind;
-mod exec;
-mod mkdtemp;
-mod resolve_symlink;
+mod command;
+mod config;
+mod setup;
+mod util;
 
-use std::{fs, path::Path, process::exit};
-use clap::Parser;
-use nix::{unistd::{ForkResult, fork, Pid, getpid}, sys::{wait::{WaitPidFlag, WaitStatus, waitpid}, signal::{Signal, kill}}};
-use exec::RunChroot;
+use std::fs;
+use std::process::{exit, ExitCode};
+
+use clap::{Parser, Subcommand};
+use nix::sys::signal::{kill, Signal};
+use nix::sys::wait::{waitpid, WaitPidFlag, WaitStatus};
+use nix::unistd::{fork, getpid, ForkResult};
+
+use crate::command::install;
+use crate::setup::setup;
+use crate::{command::run, config::Config};
 
 #[derive(Parser, Debug)]
+#[command(name = "nixbox")]
 #[command(author, version, about, long_about = None)]
-struct Args {
-    #[arg()]
-    nixdir: String,
-
-    #[arg(short, long, action)]
-    no_nix_profile: bool,
-
-    #[arg()]
-    rest: Vec<String>,
+struct Cli {
+    #[command(subcommand)]
+    command: Command,
 }
 
-fn wait_for_child(rootdir: &Path, child_pid: Pid) {
-    let mut exit_status = 1;
-    loop {
-        match waitpid(child_pid, Some(WaitPidFlag::WUNTRACED)) {
-            Ok(WaitStatus::Signaled(child, Signal::SIGSTOP, _)) => {
-                let _ = kill(getpid(), Signal::SIGSTOP);
-                let _ = kill(child, Signal::SIGCONT);
-            }
-            Ok(WaitStatus::Signaled(_, signal, _)) => {
-                kill(getpid(), signal).unwrap_or_else(|err| {
-                    panic!("failed to send {} signal to our self: {}", signal, err)
-                });
-            }
-            Ok(WaitStatus::Exited(_, status)) => {
-                exit_status = status;
-                break;
-            }
-            Ok(what) => {
-                eprintln!("unexpected wait event happend: {:?}", what);
-                break;
-            }
-            Err(e) => {
-                eprintln!("waitpid failed: {}", e);
-                break;
-            }
-        };
-    }
+#[derive(Debug, Subcommand)]
+enum Command {
+    Run {
+        #[arg(short, long, action)]
+        no_nix_profile: bool,
 
-    fs::remove_dir_all(rootdir)
-        .unwrap_or_else(|err| panic!("cannot remove tempdir {}: {}", rootdir.display(), err));
+        #[arg()]
+        rest: Vec<String>,
+    },
 
-    exit(exit_status);
+    Install,
 }
 
-fn child(args: Args, chroot: RunChroot) {
-    let (uid, gid) = chroot.unshare();
-    if args.no_nix_profile {
-        chroot.bind_host();
-    } else {
-        chroot.bind_nix_profile();
-    }
-    chroot.bind_defaults();
-    chroot.exec(uid, gid, &args.rest[0], &args.rest[1..]);
-}
-
-fn main() {
-    let args = Args::parse();
-
-    let rootdir = mkdtemp::mkdtemp("nix-chroot.XXXXXX")
-        .unwrap_or_else(|err| panic!("failed to create temporary directory: {}", err));
-
-    let nixdir = fs::canonicalize(&args.nixdir)
-        .unwrap_or_else(|err| panic!("failed to resolve nix directory {}: {}", args.nixdir, err));
-
-    let chroot = RunChroot::new(&rootdir, &nixdir);
-
+fn cleanup(f: impl FnOnce() -> ()) {
     match unsafe { fork() } {
-        Ok(ForkResult::Parent { child, .. }) => wait_for_child(&rootdir, child),
-        Ok(ForkResult::Child) => child(args, chroot),
-        Err(e) => {
-            eprintln!("fork failed: {}", e);
+        Ok(ForkResult::Parent { child, .. }) => {
+            let mut exit_status = 1;
+            loop {
+                use Signal::*;
+                match waitpid(child, Some(WaitPidFlag::WUNTRACED)) {
+                    Ok(WaitStatus::Signaled(child, SIGSTOP, _)) => {
+                        let _ = kill(getpid(), SIGSTOP);
+                        let _ = kill(child, SIGCONT);
+                    }
+                    Ok(WaitStatus::Signaled(_, signal, _)) => kill(getpid(), signal)
+                        .unwrap_or_else(|err| {
+                            panic!(
+                                "failed to send {} signal to {}: {}",
+                                signal,
+                                env!("CARGO_CRATE_NAME"),
+                                err
+                            );
+                        }),
+                    Ok(WaitStatus::Exited(_, status)) => {
+                        exit_status = status;
+                        break;
+                    }
+                    Ok(what) => {
+                        eprintln!("unexpected wait event: {:?}", what);
+                        break;
+                    }
+                    Err(err) => {
+                        eprintln!("waitpid failed: {}", err);
+                        break;
+                    }
+                }
+            }
+
+            f();
+            exit(exit_status);
         }
-    };
+        Ok(ForkResult::Child) => return,
+        Err(err) => panic!("fork failed: {}", err),
+    }
+}
+
+fn cleanup_config(config: &Config) {
+    cleanup(|| {
+        fs::remove_dir_all(&config.chroot_dir).unwrap_or_else(|err| {
+            panic!(
+                "cannot remove tempdir {}: {}",
+                config.chroot_dir.display(),
+                err
+            );
+        });
+    });
+}
+
+fn main() -> ExitCode {
+    let cli = Cli::parse();
+
+    use Command::*;
+    match cli.command {
+        Run {
+            no_nix_profile,
+            rest,
+        } => {
+            let config = Config::new(!no_nix_profile).unwrap();
+            cleanup_config(&config);
+            setup(&config);
+
+            let envs: Vec<(String, String)> = vec![];
+            run(&config, &rest[0], &rest[1..], envs)
+        }
+
+        Install => {
+            let config = Config::new(false).unwrap();
+            cleanup_config(&config);
+            install(&config)
+        }
+    }
 }

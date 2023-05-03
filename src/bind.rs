@@ -1,6 +1,5 @@
 use nix::mount::{mount, MsFlags};
 use std::fs;
-use std::io;
 use std::path::Path;
 
 pub fn bind<P: AsRef<Path>, Q: AsRef<Path>>(source: P, targetdir: Q) {
@@ -48,11 +47,9 @@ fn bind_mount(source: &Path, dest: &Path) {
 
 fn bind_dir(path: &Path, target: &Path) {
     if !target.exists() {
-        match fs::create_dir_all(&target) {
-            Err(ref x) if x.kind() == io::ErrorKind::AlreadyExists => Ok(()),
-            x => x,
-        }
-        .unwrap_or_else(|err| panic!("Could not create directory '{}': {}", target.display(), err));
+        fs::create_dir_all(&target).unwrap_or_else(|err| {
+            panic!("Could not create directory '{}': {}", target.display(), err)
+        });
         bind_mount(&path, &target);
     } else {
         if target.is_dir() {
@@ -73,6 +70,11 @@ fn bind_file(path: &Path, target: &Path) {
 }
 
 fn bind_symlink(path: &Path, target: &Path) {
+    panic!(
+        "Cannot symlink '{}' to '{}': Not implemented",
+        path.display(),
+        target.display()
+    );
     // let Ok(file_name) = path.file_name() else { return; };
     // let path = fs::read_link(&path)?;
     // fs::symlink(&path, )
