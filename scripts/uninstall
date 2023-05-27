@@ -1,0 +1,3 @@
+#!/bin/sh
+chmod -R u+w ~/.local/share/nixbox
+rm -rf ~/.nix-profile ~/.nix-defexpr ~/.nix-channels ~/.local/share/nixbox

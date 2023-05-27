@@ -24,12 +24,21 @@ pub fn setup(config: &Config) {
     unshare(CloneFlags::CLONE_NEWNS | CloneFlags::CLONE_NEWUSER).expect("unshare failed");
 
     if let Some(nix_profile_dir) = &config.nix_profile {
-        bind_nix_profile(&nix_profile_dir, &config.chroot_dir, &config.nix_home);
+        bind_nix_profile(
+            &nix_profile_dir,
+            &config.chroot_dir,
+            &config.nix_home,
+            &config.nixbox_root(),
+        );
         bind_tmpfiles(&nix_profile_dir);
     } else {
         bind_host(&config.chroot_dir);
     }
     bind_common(&config.nix_home, &config.chroot_dir);
+
+    let mut perms = fs::metadata(&config.chroot_dir).unwrap().permissions();
+    perms.set_readonly(true);
+    fs::set_permissions(&config.chroot_dir, perms);
 
     let cwd = env::current_dir().expect("cannot get current working directory");
 
@@ -96,16 +105,13 @@ fn bind_host(chroot_dir: &Path) {
     }
 }
 
-fn bind_nix_profile(nix_profile: &Path, chroot_dir: &Path, nix_dir: &Path) {
-    // /bin/sh
-    create_symlink(&nix_profile.join("bin/sh"), &chroot_dir.join("bin/sh"));
-
-    // /usr/bin/env
-    create_symlink(&nix_profile.join("bin/env"), &chroot_dir.join("usr/bin/env"));
-
+fn bind_nix_profile(nix_profile: &Path, chroot_dir: &Path, nix_dir: &Path, nixbox_root: &Path) {
     // create /run/opengl-driver/lib in chroot, to behave like NixOS
     // (needed for nix pkgs with OpenGL or CUDA support to work)
-    if let Ok(ogldir) = resolve_symlink(&(&Path::new("/nix"), &nix_dir), nix_dir.join("var/nix/opengl-driver")) {
+    if let Ok(ogldir) = resolve_symlink(
+        &(&Path::new("/nix"), &nix_dir),
+        nix_dir.join("var/nix/opengl-driver"),
+    ) {
         let ogldir = ogldir.join("lib");
         if ogldir.is_dir() {
             let ogl_mount = chroot_dir.join("run/opengl-driver/lib");
@@ -129,6 +135,27 @@ fn bind_nix_profile(nix_profile: &Path, chroot_dir: &Path, nix_dir: &Path) {
             &Path::new("/usr/share").join(file_name),
             chroot_dir.join("usr/share"),
         );
+    }
+
+    if let Ok(sysroot) = resolve_symlink(&(&Path::new("/nix"), &nix_dir), nixbox_root) {
+        // current-system -> /run/current-system
+        create_symlink(&sysroot, &chroot_dir.join("run/current-system"));
+
+        // current-system/sw/bin/sh -> /bin/sh
+        create_symlink(&sysroot.join("sw/bin/sh"), &chroot_dir.join("bin/sh"));
+
+        // current-system/sw/bin/env -> /usr/bin/env
+        create_symlink(&sysroot.join("sw/bin/env"), &chroot_dir.join("usr/bin/env"));
+
+        let etcdir = resolve_symlink(&(&Path::new("/nix"), &nix_dir), sysroot.join("etc")).unwrap();
+        for entry in fs::read_dir(etcdir).unwrap() {
+            let entry = entry.unwrap();
+            let target = chroot_dir.join("etc").join(entry.file_name());
+
+            if !target.exists() {
+                create_symlink(&entry.path(), &target);
+            }
+        }
     }
 }
 

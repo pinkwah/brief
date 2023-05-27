@@ -32,12 +32,7 @@ pub fn install(config: &Config) -> ExitCode {
 
     let env: Vec<(String, String)> = vec![];
     // run(config, "bash", &["-c", "bash <(curl -L https://nixos.org/nix/install) --no-daemon"], env.into_iter())
-    run(
-        config,
-        "bash",
-        &["/tmp/nixbox-install.sh"],
-        env.into_iter(),
-    )
+    run(config, "bash", &["/tmp/nixbox-install.sh"], env.into_iter())
     // run(config, "bash", &[] as &[&'static str], env.into_iter())
 }
 

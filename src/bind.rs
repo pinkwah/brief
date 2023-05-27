@@ -11,17 +11,10 @@ pub fn bind<P: AsRef<Path>, Q: AsRef<Path>>(source: P, targetdir: Q) {
 
     if stat.is_dir() {
         bind_dir(&source, &target);
-    } else if stat.is_file() {
-        bind_file(&source, &target);
     } else if stat.file_type().is_symlink() {
         bind_symlink(&source, &target);
     } else {
-        eprintln!(
-            "Could not bind '{}' into '{}': Unknown stat {:?}",
-            source.display(),
-            targetdir.as_ref().display(),
-            stat,
-        );
+        bind_file(&source, &target);
     }
 }
 

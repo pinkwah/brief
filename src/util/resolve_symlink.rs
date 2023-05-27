@@ -103,7 +103,8 @@ mod tests {
         // Cannot resolve symlink
         assert!(path.join("symlink/file").canonicalize().is_err());
 
-        let actual = resolve_symlink(&("/fake-directory", &path), &path.join("symlink/file")).unwrap();
+        let actual =
+            resolve_symlink(&("/fake-directory", &path), &path.join("symlink/file")).unwrap();
         assert_eq!(expect, actual);
     }
 

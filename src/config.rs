@@ -16,12 +16,18 @@ fn data_dir() -> Option<PathBuf> {
 }
 
 fn nix_profile_dir() -> Option<PathBuf> {
-    let val = env::var_os("HOME")?;
-    let path = PathBuf::from(val).join(".nix-profile");
-    match path.metadata() {
-        Ok(_) => Some(path),
-        Err(_) => None,
+    let datadir = data_dir()?.join("root");
+    if let Ok(_) = datadir.symlink_metadata() {
+        Some(datadir.join("sw/bin"))
+    } else {
+        None
     }
+    // let val = env::var_os("HOME")?;
+    // let path = PathBuf::from(val).join(".nix-profile");
+    // match path.symlink_metadata() {
+    //     Ok(_) => Some(path),
+    //     Err(_) => None,
+    // }
 }
 
 pub struct Config {
@@ -48,6 +54,11 @@ impl Config {
         let env: HashMap<&'static str, OsString> = HashMap::from([
             ("SHELL", "/bin/sh".into()),
             ("NIXBOX_BINDIR", data_dir.join("bin").into()),
+            ("NIXBOX_ROOT", data_dir.join("root").into()),
+            (
+                "NIXOS_CONFIG",
+                data_dir.join("nixbox-configuration.nix").into(),
+            ),
             ("XDG_DATA_HOME", data_dir.join("data").into()),
             ("XDG_STATE_HOME", data_dir.join("state").into()),
             ("XDG_CONFIG_HOME", data_dir.join("config").into()),
@@ -58,18 +69,18 @@ impl Config {
                     .unwrap_or_else(|err| panic!("current_exe() could not be called: {}", err))
                     .into(),
             ),
-
             (
-            "PATH",
-            match nix_profile.clone() {
-                Some(x) => {
-                    let mut os: OsString = x.into_os_string();
-                    os.push(":/usr/bin:/bin");
-                    os
-                }
-                None => OsString::from("/usr/local/bin:/usr/bin:/bin"),
-            },
-        )]);
+                "PATH",
+                match nix_profile.clone() {
+                    Some(x) => {
+                        let mut os: OsString = x.into_os_string();
+                        os.push(":/usr/bin:/bin");
+                        os
+                    }
+                    None => OsString::from("/usr/local/bin:/usr/bin:/bin"),
+                },
+            ),
+        ]);
 
         Some(Self {
             chroot_dir,
@@ -108,6 +119,14 @@ impl Config {
             self.env
                 .get("XDG_CONFIG_HOME")
                 .expect("Logic error: env HashMap does not contain XDG_CONFIG_HOME"),
+        )
+    }
+
+    pub fn nixbox_root(&self) -> &Path {
+        &Path::new(
+            self.env
+                .get("NIXBOX_ROOT")
+                .expect("Logic error: env HashMap does not contain NIXBOX_ROOT"),
         )
     }
 }

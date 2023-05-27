@@ -4,7 +4,10 @@ mod config;
 mod setup;
 mod util;
 
+use std::env;
+use std::ffi::{OsStr, OsString};
 use std::fs;
+use std::path::PathBuf;
 use std::process::{exit, ExitCode};
 
 use clap::{Parser, Subcommand};
@@ -33,6 +36,8 @@ enum Command {
         #[arg()]
         rest: Vec<String>,
     },
+
+    Enter,
 
     Install,
 }
@@ -107,6 +112,25 @@ fn main() -> ExitCode {
 
             let envs: Vec<(String, String)> = vec![];
             run(&config, &rest[0], &rest[1..], envs)
+        }
+
+        Enter => {
+            let config = Config::new(true).unwrap();
+            cleanup_config(&config);
+            setup(&config);
+
+            let mut shell = PathBuf::from(
+                env::var_os("NIXBOX_SHELL")
+                    .unwrap_or(OsString::from("/run/current-system/sw/bin/bash")),
+            );
+            if shell.is_relative() {
+                shell = PathBuf::from(env::var_os("HOME").unwrap())
+                    .join(".nix-profile/bin")
+                    .join(shell);
+            }
+
+            let envs = vec![("SHELL", &shell)];
+            run(&config, "bash", &["-lc", AsRef::<OsStr>::as_ref(&shell).to_str().unwrap()], envs)
         }
 
         Install => {

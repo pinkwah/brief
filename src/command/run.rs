@@ -44,7 +44,11 @@ where
         .status()
         .and_then(|x| Ok(ExitCode::from(x.into_raw() as u8)))
         .unwrap_or_else(|err| {
-            eprintln!("failed to execute {}: {}", program.as_ref().to_string_lossy(), err);
+            eprintln!(
+                "failed to execute {}: {}",
+                program.as_ref().to_string_lossy(),
+                err
+            );
             ExitCode::FAILURE
         })
 }
