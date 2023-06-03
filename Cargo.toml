@@ -13,6 +13,7 @@ repository = "https://github.com/pinkwah/nixbox"
 nix = "0.26.2"
 libc = "0.2.139"
 clap = { version = "4.2.4", features = ["derive"] }
+psutil = "3.2.2"
 
 [dev-dependencies]
 rstest = "0.17.0"

@@ -21,7 +21,8 @@ pub fn setup(config: &Config) {
     let uid = unistd::getuid();
     let gid = unistd::getgid();
 
-    unshare(CloneFlags::CLONE_NEWNS | CloneFlags::CLONE_NEWUSER).expect("unshare failed");
+    unshare(CloneFlags::CLONE_NEWNS | CloneFlags::CLONE_NEWUSER | CloneFlags::CLONE_NEWUTS)
+        .expect("unshare failed");
 
     if let Some(nix_profile_dir) = &config.nix_profile {
         bind_nix_profile(
@@ -38,7 +39,8 @@ pub fn setup(config: &Config) {
 
     let mut perms = fs::metadata(&config.chroot_dir).unwrap().permissions();
     perms.set_readonly(true);
-    fs::set_permissions(&config.chroot_dir, perms);
+    fs::set_permissions(&config.chroot_dir, perms)
+        .unwrap_or_else(|err| panic!("Could not set chroot dir permissions: {}", err));
 
     let cwd = env::current_dir().expect("cannot get current working directory");
 
