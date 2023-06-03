@@ -1,9 +1,7 @@
 name: CI
 on:
-  push:
-    branches: [staging, trying]
   pull_request:
-    branches: [master]
+    branches: [main]
     types: [opened, reopened, synchronize]
 jobs:
   test:
@@ -29,7 +27,8 @@ jobs:
       - name: install aarch64-compiler cross-compiler
         if: matrix.target == 'aarch64-unknown-linux-musl'
         run: |
-          sudo apt install gcc-aarch64-linux-gnu
+          sudo apt-get update
+          sudo apt-get install gcc-aarch64-linux-gnu
           mkdir .cargo
           cat >.cargo/config <<EOF
           [target.aarch64-unknown-linux-musl]
@@ -38,7 +37,8 @@ jobs:
       - name: install armv7-compiler cross-compiler
         if: matrix.target == 'armv7-unknown-linux-musleabihf'
         run: |
-          sudo apt install gcc-arm-linux-gnueabihf
+          sudo apt-get update
+          sudo apt-get install gcc-arm-linux-gnueabihf
           mkdir .cargo
           cat >.cargo/config <<EOF
           [target.armv7-unknown-linux-musleabihf]
