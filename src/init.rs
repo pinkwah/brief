@@ -2,7 +2,6 @@ use std::env;
 use std::ffi::{OsStr, OsString};
 use std::fs::{self, File};
 use std::io::{self, BufRead, BufReader, Write};
-use std::ops::Index;
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf};
@@ -53,7 +52,7 @@ pub fn nixbox_chroot() -> Option<PathBuf> {
 pub fn nixbox_env() -> Option<Vec<(OsString, OsString)>> {
     let pid = nixbox_pid()?;
     let file = File::open(format!("/proc/{}/environ", pid)).ok()?;
-    let mut reader = BufReader::new(file);
+    let reader = BufReader::new(file);
     let mut env = vec![];
     for line in reader.split(b'\0') {
         let line = line.ok()?;

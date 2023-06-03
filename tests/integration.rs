@@ -12,9 +12,7 @@ fn run_nix_install() {
 
     let result = Command::new("cargo")
         .args(&[
-            "run",
-            "--target",
-            TARGET,
+            "run", "--target", TARGET,
             "install",
             // tempdir.to_str().unwrap(),
             // "--no-nix-profile",

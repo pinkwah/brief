@@ -42,7 +42,7 @@ where
         .envs(&config.env)
         .envs(envs)
         .status()
-        .and_then(|x| Ok(ExitCode::from(x.into_raw() as u8)))
+        .map(|x| ExitCode::from(x.into_raw() as u8))
         .unwrap_or_else(|err| {
             eprintln!(
                 "failed to execute {}: {}",

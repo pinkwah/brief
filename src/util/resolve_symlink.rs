@@ -13,17 +13,17 @@ pub fn resolve_symlink(
     let mut path = if path.is_absolute() {
         path.to_owned()
     } else {
-        current_dir()?.join(path).to_owned()
+        current_dir()?.join(path)
     };
 
     loop {
-        if let Err(_) = path.symlink_metadata() {
+        if path.symlink_metadata().is_err() {
             for parent in path.ancestors().skip(1) {
                 if !parent.is_symlink() {
                     continue;
                 }
 
-                let resolved = resolve_symlink(&mapping, parent)?;
+                let resolved = resolve_symlink(mapping, parent)?;
                 path = resolved.join(path.strip_prefix(parent).unwrap());
                 break;
             }
