@@ -20,8 +20,8 @@ cat > $NIXOS_CONFIG <<EOF
 EOF
 
 source $HOME/.nix-profile/etc/profile.d/nix.sh
-nix-channel --add https://nixos.org/channels/nixos-unstable nixos
-nix-channel --remove nixpkgs
+# nix-channel --add https://nixos.org/channels/nixos-unstable nixos
+# nix-channel --remove nixpkgs
 
 nix-channel --add https://github.com/nix-community/home-manager/archive/master.tar.gz home-manager
 nix-channel --update

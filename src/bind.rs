@@ -10,11 +10,11 @@ pub fn bind<P: AsRef<Path>, Q: AsRef<Path>>(source: P, targetdir: Q) {
         .unwrap_or_else(|err| panic!("Could not stat '{}': {}", source.display(), err));
 
     if stat.is_dir() {
-        bind_dir(&source, &target);
+        bind_dir(source, &target);
     } else if stat.file_type().is_symlink() {
-        bind_symlink(&source, &target);
+        bind_symlink(source, &target);
     } else {
-        bind_file(&source, &target);
+        bind_file(source, &target);
     }
 }
 
@@ -40,26 +40,24 @@ fn bind_mount(source: &Path, dest: &Path) {
 
 fn bind_dir(path: &Path, target: &Path) {
     if !target.exists() {
-        fs::create_dir_all(&target).unwrap_or_else(|err| {
+        fs::create_dir_all(target).unwrap_or_else(|err| {
             panic!("Could not create directory '{}': {}", target.display(), err)
         });
-        bind_mount(&path, &target);
-    } else {
-        if target.is_dir() {
-            for entry in fs::read_dir(&path)
-                .unwrap_or_else(|err| panic!("Could not list dir '{}': {}", target.display(), err))
-            {
-                let entry = entry.unwrap();
-                bind(&entry.path(), &target);
-            }
+        bind_mount(path, target);
+    } else if target.is_dir() {
+        for entry in fs::read_dir(path)
+            .unwrap_or_else(|err| panic!("Could not list dir '{}': {}", target.display(), err))
+        {
+            let entry = entry.unwrap();
+            bind(&entry.path(), target);
         }
     }
 }
 
 fn bind_file(path: &Path, target: &Path) {
-    fs::File::create(&target)
+    fs::File::create(target)
         .unwrap_or_else(|err| panic!("Could not create file '{}': {}", target.display(), err));
-    bind_mount(&path, &target);
+    bind_mount(path, target);
 }
 
 fn bind_symlink(path: &Path, target: &Path) {

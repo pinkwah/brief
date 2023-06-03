@@ -20,7 +20,7 @@ use nix::sys::wait::{waitpid, WaitPidFlag, WaitStatus};
 use nix::unistd::{chroot, fork, getpid, ForkResult};
 
 use crate::command::install;
-use crate::init::{init, nixbox_chroot, nixbox_pid};
+use crate::init::{init, nixbox_chroot, nixbox_env, nixbox_pid};
 use crate::setup::setup;
 use crate::{command::run, config::Config};
 
@@ -47,7 +47,7 @@ enum Command {
     Install,
 }
 
-fn cleanup(f: impl FnOnce() -> ()) {
+fn cleanup(f: impl FnOnce()) {
     match unsafe { fork() } {
         Ok(ForkResult::Parent { child, .. }) => {
             let mut exit_status = 1;
@@ -85,7 +85,7 @@ fn cleanup(f: impl FnOnce() -> ()) {
             f();
             exit(exit_status);
         }
-        Ok(ForkResult::Child) => return,
+        Ok(ForkResult::Child) => (),
         Err(err) => panic!("fork failed: {}", err),
     }
 }
@@ -115,8 +115,12 @@ fn main() -> ExitCode {
             cleanup_config(&config);
             setup(&config);
 
-            let envs: Vec<(String, String)> = vec![];
-            run(&config, &rest[0], &rest[1..], envs)
+            run(
+                &config,
+                &rest[0],
+                &rest[1..],
+                nixbox_env().unwrap_or_default(),
+            )
         }
 
         Enter => {
@@ -164,7 +168,7 @@ fn main() -> ExitCode {
             run(
                 &config,
                 "bash",
-                &["-lc", AsRef::<OsStr>::as_ref(&shell).to_str().unwrap()],
+                ["-lc", AsRef::<OsStr>::as_ref(&shell).to_str().unwrap()],
                 envs,
             )
         }

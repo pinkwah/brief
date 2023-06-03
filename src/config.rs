@@ -8,16 +8,15 @@ use crate::util::mkdtemp;
 fn data_dir() -> Option<PathBuf> {
     if let Some(val) = env::var_os("XDG_DATA_HOME") {
         Some(PathBuf::from(val))
-    } else if let Some(val) = env::var_os("HOME") {
-        Some(PathBuf::from(val).join(concat!(".local/share/", env!("CARGO_CRATE_NAME"))))
     } else {
-        None
+        env::var_os("HOME")
+            .map(|val| PathBuf::from(val).join(concat!(".local/share/", env!("CARGO_CRATE_NAME"))))
     }
 }
 
 fn nix_profile_dir() -> Option<PathBuf> {
     let datadir = data_dir()?.join("root");
-    if let Ok(_) = datadir.symlink_metadata() {
+    if datadir.symlink_metadata().is_ok() {
         Some(datadir.join("sw/bin"))
     } else {
         None
@@ -91,7 +90,7 @@ impl Config {
     }
 
     pub fn xdg_data_home(&self) -> &Path {
-        &Path::new(
+        Path::new(
             self.env
                 .get("XDG_DATA_HOME")
                 .expect("Logic error: env HashMap does not contain XDG_DATA_HOME"),
@@ -99,7 +98,7 @@ impl Config {
     }
 
     pub fn xdg_state_home(&self) -> &Path {
-        &Path::new(
+        Path::new(
             self.env
                 .get("XDG_STATE_HOME")
                 .expect("Logic error: env HashMap does not contain XDG_STATE_HOME"),
@@ -107,7 +106,7 @@ impl Config {
     }
 
     pub fn nixbox_bindir(&self) -> &Path {
-        &Path::new(
+        Path::new(
             self.env
                 .get("NIXBOX_BINDIR")
                 .expect("Logic error: env HashMap does not contain NIXBOX_BINDIR"),
@@ -115,7 +114,7 @@ impl Config {
     }
 
     pub fn xdg_config_home(&self) -> &Path {
-        &Path::new(
+        Path::new(
             self.env
                 .get("XDG_CONFIG_HOME")
                 .expect("Logic error: env HashMap does not contain XDG_CONFIG_HOME"),
@@ -123,7 +122,7 @@ impl Config {
     }
 
     pub fn nixbox_root(&self) -> &Path {
-        &Path::new(
+        Path::new(
             self.env
                 .get("NIXBOX_ROOT")
                 .expect("Logic error: env HashMap does not contain NIXBOX_ROOT"),

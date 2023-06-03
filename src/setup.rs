@@ -25,13 +25,8 @@ pub fn setup(config: &Config) {
         .expect("unshare failed");
 
     if let Some(nix_profile_dir) = &config.nix_profile {
-        bind_nix_profile(
-            &nix_profile_dir,
-            &config.chroot_dir,
-            &config.nix_home,
-            &config.nixbox_root(),
-        );
-        bind_tmpfiles(&nix_profile_dir);
+        bind_nix_profile(&config.chroot_dir, &config.nix_home, config.nixbox_root());
+        bind_tmpfiles(nix_profile_dir);
     } else {
         bind_host(&config.chroot_dir);
     }
@@ -90,7 +85,7 @@ fn create_symlink(source: &Path, target: &Path) {
         .unwrap_or_else(|| {
             panic!("Could not create parent dirs of {}", target.display());
         });
-    symlink(source, &target).unwrap_or_else(|err| {
+    symlink(source, target).unwrap_or_else(|err| {
         panic!(
             "Could not create symbolic link from {} to {}: {}",
             source.display(),
@@ -107,7 +102,7 @@ fn bind_host(chroot_dir: &Path) {
     }
 }
 
-fn bind_nix_profile(nix_profile: &Path, chroot_dir: &Path, nix_dir: &Path, nixbox_root: &Path) {
+fn bind_nix_profile(chroot_dir: &Path, nix_dir: &Path, nixbox_root: &Path) {
     // create /run/opengl-driver/lib in chroot, to behave like NixOS
     // (needed for nix pkgs with OpenGL or CUDA support to work)
     if let Ok(ogldir) = resolve_symlink(
@@ -128,7 +123,7 @@ fn bind_nix_profile(nix_profile: &Path, chroot_dir: &Path, nix_dir: &Path, nixbo
     for file_name in ["resolv.conf", "passwd", "group", "group-", "fonts"] {
         bind(&Path::new("/etc").join(file_name), chroot_dir.join("etc"));
     }
-    copy_certs(&chroot_dir);
+    copy_certs(chroot_dir);
 
     // bind /usr
     create_dir_all(chroot_dir.join("usr/share")).expect("could not create usr/share dir");
@@ -203,14 +198,10 @@ fn bind_tmpfiles(nix_profile: &Path) {
         for line in reader.lines() {
             let line = line.unwrap();
             let vec = line.split_ascii_whitespace().collect::<Vec<_>>();
-            match vec.as_slice() {
-                ["L+", target, "-", "-", "-", "-", source] => {
-                    fs::create_dir_all(Path::new(target).parent().unwrap_or(Path::new("/")))
-                        .unwrap();
-                    create_symlink(Path::new(source), Path::new(target));
-                }
-                _ => (),
-            };
+            if let ["L+", target, "-", "-", "-", "-", source] = vec.as_slice() {
+                fs::create_dir_all(Path::new(target).parent().unwrap_or(Path::new("/"))).unwrap();
+                create_symlink(Path::new(source), Path::new(target));
+            }
         }
     }
 }
@@ -221,7 +212,7 @@ fn copy_certs(chroot_dir: &Path) {
         "ssl/certs/ca-bundle.crt",
         "pki/tls/certs/ca-bundle.crt",
     ]
-    .map(|path| Path::new(path));
+    .map(Path::new);
 
     let found_paths = paths
         .iter()
