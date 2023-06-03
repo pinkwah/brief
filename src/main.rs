@@ -177,7 +177,7 @@ fn main() -> ExitCode {
 
         Install => {
             let config = Config::new(false).unwrap();
-            cleanup_config(&config);
+            // cleanup_config(&config);
             install(&config)
         }
     }
