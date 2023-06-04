@@ -27,6 +27,10 @@ pub fn setup(config: &Config) {
     if let Some(nix_profile_dir) = &config.nix_profile {
         bind_nix_profile(&config.chroot_dir, &config.nix_home, config.nixbox_root());
         bind_tmpfiles(nix_profile_dir);
+
+        if let Some(current_system) = &config.current_system {
+            bind_tmpfiles(current_system);
+        }
     } else {
         bind_host(&config.chroot_dir);
     }
@@ -184,8 +188,8 @@ fn bind_common(nix_dir: &Path, chroot_dir: &Path) {
     }
 }
 
-fn bind_tmpfiles(nix_profile: &Path) {
-    let Ok(dir) = fs::read_dir(nix_profile.join("lib/tmpfiles.d")) else { return; };
+fn bind_tmpfiles(path: &Path) {
+    let Ok(dir) = fs::read_dir(path.join("lib/tmpfiles.d")) else { return; };
 
     for entry in dir {
         let path = entry.unwrap().path();
