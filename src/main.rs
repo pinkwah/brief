@@ -3,6 +3,7 @@ mod command;
 mod config;
 mod init;
 mod setup;
+mod status;
 mod util;
 
 use std::env;
@@ -42,6 +43,7 @@ enum Command {
         rest: Vec<String>,
     },
 
+    Status,
     Init,
     Enter,
     Install,
@@ -180,5 +182,7 @@ fn main() -> ExitCode {
             // cleanup_config(&config);
             install(&config)
         }
+
+        Status => status::status(),
     }
 }
