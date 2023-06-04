@@ -1,9 +1,10 @@
 use std::collections::HashMap;
 use std::env;
 use std::ffi::OsString;
+use std::io::Result;
 use std::path::{Path, PathBuf};
 
-use crate::util::mkdtemp;
+use crate::util::{mkdtemp, resolve_symlink};
 
 fn data_dir() -> Option<PathBuf> {
     if let Some(val) = env::var_os("XDG_DATA_HOME") {
@@ -14,24 +15,28 @@ fn data_dir() -> Option<PathBuf> {
     }
 }
 
-fn nix_profile_dir() -> Option<PathBuf> {
+fn current_system_dir() -> Option<PathBuf> {
     let datadir = data_dir()?.join("root");
     if datadir.symlink_metadata().is_ok() {
         Some(datadir.join("sw/bin"))
     } else {
         None
     }
-    // let val = env::var_os("HOME")?;
-    // let path = PathBuf::from(val).join(".nix-profile");
-    // match path.symlink_metadata() {
-    //     Ok(_) => Some(path),
-    //     Err(_) => None,
-    // }
+}
+
+fn nix_profile_dir() -> Option<PathBuf> {
+    let val = env::var_os("HOME")?;
+    let path = PathBuf::from(val).join(".nix-profile");
+    match path.symlink_metadata() {
+        Ok(_) => Some(path),
+        Err(_) => None,
+    }
 }
 
 pub struct Config {
     pub chroot_dir: PathBuf,
     pub nix_profile: Option<PathBuf>,
+    pub current_system: Option<PathBuf>,
 
     pub env: HashMap<&'static str, OsString>,
     pub nix_home: PathBuf,
@@ -44,10 +49,10 @@ impl Config {
         let chroot_dir = mkdtemp(concat!(env!("CARGO_CRATE_NAME"), "-chroot.XXXXXX"))
             .unwrap_or_else(|err| panic!("failed to create temporary directory: {}", err));
 
-        let nix_profile = if use_nix_profile {
-            nix_profile_dir()
+        let (nix_profile, current_system) = if use_nix_profile {
+            (nix_profile_dir(), current_system_dir())
         } else {
-            None
+            (None, None)
         };
 
         let env: HashMap<&'static str, OsString> = HashMap::from([
@@ -84,6 +89,7 @@ impl Config {
         Some(Self {
             chroot_dir,
             nix_profile,
+            current_system,
             env,
             nix_home: data_dir.join("nix"),
         })
@@ -127,5 +133,10 @@ impl Config {
                 .get("NIXBOX_ROOT")
                 .expect("Logic error: env HashMap does not contain NIXBOX_ROOT"),
         )
+    }
+
+    pub fn resolve_symlink(&self, path: impl AsRef<Path>) -> Result<PathBuf> {
+        let mnt = ("/nix", &self.nix_home);
+        resolve_symlink(&mnt, path)
     }
 }

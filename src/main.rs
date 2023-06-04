@@ -1,9 +1,11 @@
+mod app;
 mod bind;
 mod command;
 mod config;
 mod init;
 mod setup;
 mod status;
+mod table;
 mod util;
 
 use std::env;
@@ -43,10 +45,36 @@ enum Command {
         rest: Vec<String>,
     },
 
+    App {
+        #[command(subcommand)]
+        command: AppCommand,
+    },
+
     Status,
     Init,
     Enter,
     Install,
+}
+
+#[derive(Debug, Subcommand)]
+enum AppCommand {
+    List,
+    Install,
+}
+
+impl AppCommand {
+    fn enter(&self) -> ExitCode {
+        let config = Config::new(true).unwrap();
+        use AppCommand::*;
+        match self {
+            List => app::list(&config),
+
+            Install => {
+                eprintln!("Not implemented");
+                ExitCode::FAILURE
+            }
+        }
+    }
 }
 
 fn cleanup(f: impl FnOnce()) {
@@ -124,6 +152,8 @@ fn main() -> ExitCode {
                 nixbox_env().unwrap_or_default(),
             )
         }
+
+        App { command } => command.enter(),
 
         Enter => {
             let cwd = env::current_dir().expect("cannot get current working directory");
