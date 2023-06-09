@@ -17,7 +17,7 @@ use crate::setup::setup;
 pub fn init() -> ExitCode {
     let config = Config::new(true).unwrap();
 
-    let rundir = xdg_runtime_dir().join("nixbox");
+    let rundir = config.runtime_dir;
     if !rundir.is_dir() {
         fs::create_dir(&rundir).expect("Could not create nixbox runtime dir");
     }
@@ -25,7 +25,7 @@ pub fn init() -> ExitCode {
     let pidfile = rundir.join("server.pid");
     write_pidfile(pidfile).expect("Could not create pidfile");
 
-    force_symlink(&config.chroot_dir, rundir.join("chroot"))
+    force_symlink(config.chroot_dir(), rundir.join("chroot"))
         .unwrap_or_else(|err| panic!("could not chroot symlink: {}", err));
 
     setup(&config);
@@ -35,18 +35,6 @@ pub fn init() -> ExitCode {
     loop {
         sleep(Duration::from_secs(10));
     }
-}
-
-pub fn nixbox_pid() -> Option<i32> {
-    let file = File::open(xdg_runtime_dir().join("nixbox/server.pid")).ok()?;
-    let mut reader = BufReader::new(file);
-    let mut line = String::new();
-    let _ = reader.read_line(&mut line).ok()?;
-    line.trim().parse().ok()
-}
-
-pub fn nixbox_chroot() -> Option<PathBuf> {
-    fs::read_link(xdg_runtime_dir().join("nixbox/chroot")).ok()
 }
 
 pub fn nixbox_env() -> Option<Vec<(OsString, OsString)>> {
@@ -61,10 +49,6 @@ pub fn nixbox_env() -> Option<Vec<(OsString, OsString)>> {
         env.push((OsStr::from_bytes(key).into(), OsStr::from_bytes(val).into()));
     }
     Some(env)
-}
-
-fn xdg_runtime_dir() -> PathBuf {
-    PathBuf::from(&env::var_os("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR is not set"))
 }
 
 fn write_pidfile(pidfile: impl AsRef<Path>) -> Option<()> {
