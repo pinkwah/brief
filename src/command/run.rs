@@ -6,18 +6,32 @@ use std::process::{Command, ExitCode};
 use crate::config::Config;
 
 const FORWARD_VARS: &[&str] = &[
+    "DBUS_SESSION_BUS_ADDRESS",
     "DESKTOP_SESSION",
     "DISPLAY",
+    "GDMSESSION",
+    "GDM_LANG",
+    "GIO_LAUNCHED_DESKTOP_FILE_PID",
+    "GNOME_SETUP_DISPLAY",
     "HOME",
+    "INVOCATION_ID",
+    "JOURNAL_STREAM",
     "LANG",
+    "MANAGERPID",
+    "SESSION_MANAGER",
+    "SHLVL",
+    "SSH_AUTH_SOCK",
+    "SYSTEMD_EXEC_PID",
     "TERM",
     "USER",
+    "VTE_VERSION",
     "WAYLAND_DISPLAY",
     "XAUTHORITY",
     "XDG_CURRENT_DESKTOP",
     "XDG_RUNTIME_DIR",
     "XDG_SESSION_DESKTOP",
     "XDG_SESSION_TYPE",
+    "XMODIFIERS",
 ];
 
 pub fn run<SP, IA, SA, IE, K, V>(config: &Config, program: SP, args: IA, envs: IE) -> ExitCode
