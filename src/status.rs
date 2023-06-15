@@ -3,19 +3,21 @@ use std::io::Read;
 use std::path::Path;
 use std::process::ExitCode;
 
-use crate::init::nixbox_pid;
+use crate::init::Service;
 
 pub fn status() -> ExitCode {
-    let Some(pid) = nixbox_pid() else {
+    let Some(service) = Service::from_existing() else {
         return not_running();
     };
 
-    let mnt = Path::new("/proc").join(pid.to_string()).join("ns/mnt");
+    let mnt = Path::new("/proc")
+        .join(service.pid.to_string())
+        .join("ns/mnt");
     let Ok(mntid) = fs::read_link(mnt) else {
         return not_running();
     };
 
-    println!("nixbox running (PID: {})", pid);
+    println!("nixbox running (PID: {})", service.pid);
     println!("\nPID\t\tCOMMAND");
     for entry in fs::read_dir("/proc").expect("Coult not read /proc") {
         let Ok(entry) = entry else { continue };

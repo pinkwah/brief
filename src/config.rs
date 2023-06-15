@@ -1,9 +1,10 @@
 use std::collections::HashMap;
 use std::env;
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
 use std::io::Result;
 use std::path::{Path, PathBuf};
 
+use crate::init::Service;
 use crate::util::{mkdtemp, resolve_symlink};
 
 fn data_dir() -> Option<PathBuf> {
@@ -38,7 +39,7 @@ pub struct Config {
     pub nix_profile: Option<PathBuf>,
     pub current_system: Option<PathBuf>,
 
-    pub env: HashMap<&'static str, OsString>,
+    pub env: HashMap<OsString, OsString>,
     pub nix_home: PathBuf,
 }
 
@@ -55,27 +56,27 @@ impl Config {
             (None, None)
         };
 
-        let env: HashMap<&'static str, OsString> = HashMap::from([
-            ("SHELL", "/bin/sh".into()),
-            ("NIXBOX_BINDIR", data_dir.join("bin").into()),
-            ("NIXBOX_ROOT", data_dir.join("root").into()),
+        let env: HashMap<OsString, OsString> = HashMap::from([
+            ("SHELL".into(), "/bin/sh".into()),
+            ("NIXBOX_BINDIR".into(), data_dir.join("bin").into()),
+            ("NIXBOX_ROOT".into(), data_dir.join("root").into()),
             (
-                "NIXOS_CONFIG",
+                "NIXOS_CONFIG".into(),
                 data_dir.join("nixbox-configuration.nix").into(),
             ),
-            ("XDG_DATA_HOME", data_dir.join("data").into()),
-            ("XDG_STATE_HOME", data_dir.join("state").into()),
-            ("XDG_CONFIG_HOME", data_dir.join("config").into()),
-            ("NIX_CONF_DIR", "/nix/etc/nix".into()),
+            ("XDG_DATA_HOME".into(), data_dir.join("data").into()),
+            ("XDG_STATE_HOME".into(), data_dir.join("state").into()),
+            ("XDG_CONFIG_HOME".into(), data_dir.join("config").into()),
+            ("NIX_CONF_DIR".into(), "/nix/etc/nix".into()),
             (
-                "NIXBOX_EXECUTABLE",
+                "NIXBOX_EXECUTABLE".into(),
                 env::current_exe()
                     .unwrap_or_else(|err| panic!("current_exe() could not be called: {}", err))
                     .into(),
             ),
             (
-                "PATH",
-                match nix_profile.clone() {
+                "PATH".into(),
+                match current_system.clone() {
                     Some(x) => {
                         let mut os: OsString = x.into_os_string();
                         os.push(":/usr/bin:/bin");
@@ -98,7 +99,7 @@ impl Config {
     pub fn xdg_data_home(&self) -> &Path {
         Path::new(
             self.env
-                .get("XDG_DATA_HOME")
+                .get(OsStr::new("XDG_DATA_HOME"))
                 .expect("Logic error: env HashMap does not contain XDG_DATA_HOME"),
         )
     }
@@ -106,7 +107,7 @@ impl Config {
     pub fn xdg_state_home(&self) -> &Path {
         Path::new(
             self.env
-                .get("XDG_STATE_HOME")
+                .get(OsStr::new("XDG_STATE_HOME"))
                 .expect("Logic error: env HashMap does not contain XDG_STATE_HOME"),
         )
     }
@@ -114,7 +115,7 @@ impl Config {
     pub fn nixbox_bindir(&self) -> &Path {
         Path::new(
             self.env
-                .get("NIXBOX_BINDIR")
+                .get(OsStr::new("NIXBOX_BINDIR"))
                 .expect("Logic error: env HashMap does not contain NIXBOX_BINDIR"),
         )
     }
@@ -122,7 +123,7 @@ impl Config {
     pub fn xdg_config_home(&self) -> &Path {
         Path::new(
             self.env
-                .get("XDG_CONFIG_HOME")
+                .get(OsStr::new("XDG_CONFIG_HOME"))
                 .expect("Logic error: env HashMap does not contain XDG_CONFIG_HOME"),
         )
     }
@@ -130,7 +131,7 @@ impl Config {
     pub fn nixbox_root(&self) -> &Path {
         Path::new(
             self.env
-                .get("NIXBOX_ROOT")
+                .get(OsStr::new("NIXBOX_ROOT"))
                 .expect("Logic error: env HashMap does not contain NIXBOX_ROOT"),
         )
     }
@@ -138,5 +139,15 @@ impl Config {
     pub fn resolve_symlink(&self, path: impl AsRef<Path>) -> Result<PathBuf> {
         let mnt = ("/nix", &self.nix_home);
         resolve_symlink(&mnt, path)
+    }
+}
+
+impl From<&Service> for Config {
+    fn from(service: &Service) -> Self {
+        let mut config = Self::new(true).unwrap();
+        for (key, val) in service.env.iter() {
+            config.env.insert(key.clone(), val.clone());
+        }
+        config
     }
 }
