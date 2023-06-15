@@ -88,7 +88,20 @@ fn main() -> ExitCode {
             let config = Config::from(&service);
             enterns(&service);
 
-            run(&config, &rest[0], &rest[1..], service.env)
+            let mut shell = PathBuf::from(
+                env::var_os("NIXBOX_SHELL")
+                    .unwrap_or(OsString::from("/run/current-system/sw/bin/bash")),
+            );
+            if shell.is_relative() {
+                shell =
+                    PathBuf::from(env::var_os("HOME").expect("Environment variable HOME not set"))
+                        .join(".nix-profile/bin")
+                        .join(shell);
+            }
+
+            let envs = vec![("SHELL", &shell)];
+
+            run(&config, &rest[0], &rest[1..], envs)
         }
 
         App { command } => command.enter(),

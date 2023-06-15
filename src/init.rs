@@ -15,6 +15,7 @@ use crate::setup::setup;
 
 const LOGIN_SCRIPT: &str = r#"
 echo $$ > $1
+/usr/bin/env -0 > $2
 while :; do sleep 3600; done
 "#;
 
@@ -28,7 +29,7 @@ impl Service {
     pub fn from_existing() -> Option<Self> {
         let pid = get_pid()?;
         let root = get_root()?;
-        let env = get_env(pid)?;
+        let env = get_env()?;
 
         Some(Service { pid, root, env })
     }
@@ -42,6 +43,7 @@ impl Service {
         }
 
         let pidfile = rundir.join("server.pid");
+        let envfile = rundir.join("environ");
         // write_pidfile(pidfile).expect("Could not create pidfile");
 
         force_symlink(&config.chroot_dir, rundir.join("chroot"))
@@ -61,6 +63,7 @@ impl Service {
                 LOGIN_SCRIPT,
                 "--",
                 pidfile.to_str().unwrap(),
+                envfile.to_str().unwrap(),
             ],
             envs,
         );
@@ -80,15 +83,18 @@ fn get_root() -> Option<PathBuf> {
     fs::read_link(xdg_runtime_dir().join("nixbox/chroot")).ok()
 }
 
-fn get_env(pid: i32) -> Option<Vec<(OsString, OsString)>> {
-    let file = File::open(format!("/proc/{}/environ", pid)).ok()?;
+fn get_env() -> Option<Vec<(OsString, OsString)>> {
+    let file = File::open(xdg_runtime_dir().join("nixbox/environ")).ok()?;
     let reader = BufReader::new(file);
     let mut env = vec![];
     for line in reader.split(b'\0') {
         let line = line.ok()?;
         let index = line.iter().position(|c| *c == b'=')?;
         let (key, val) = line.split_at(index);
-        env.push((OsStr::from_bytes(key).into(), OsStr::from_bytes(val).into()));
+        env.push((
+            OsStr::from_bytes(key).into(),
+            OsStr::from_bytes(&val[1..]).into(),
+        ));
     }
     Some(env)
 }
