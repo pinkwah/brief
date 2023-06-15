@@ -5,39 +5,70 @@ use std::io::{self, BufRead, BufReader, Write};
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf};
-use std::process::{self, ExitCode};
-use std::thread::sleep;
-use std::time::Duration;
+use std::process;
 
 use nix::unistd::{sethostname, unlink};
 
+use crate::command::run;
 use crate::config::Config;
 use crate::setup::setup;
 
-pub fn init() -> ExitCode {
-    let config = Config::new(true).unwrap();
+const LOGIN_SCRIPT: &str = r#"
+echo $$ > $1
+while :; do sleep 3600; done
+"#;
 
-    let rundir = xdg_runtime_dir().join("nixbox");
-    if !rundir.is_dir() {
-        fs::create_dir(&rundir).expect("Could not create nixbox runtime dir");
+pub struct Service {
+    pub pid: i32,
+    pub root: PathBuf,
+    pub env: Vec<(OsString, OsString)>,
+}
+
+impl Service {
+    pub fn from_existing() -> Option<Self> {
+        let pid = get_pid()?;
+        let root = get_root()?;
+        let env = get_env(pid)?;
+
+        Some(Service { pid, root, env })
     }
 
-    let pidfile = rundir.join("server.pid");
-    write_pidfile(pidfile).expect("Could not create pidfile");
+    pub fn init() -> Option<Self> {
+        let config = Config::new(true).unwrap();
 
-    force_symlink(&config.chroot_dir, rundir.join("chroot"))
-        .unwrap_or_else(|err| panic!("could not chroot symlink: {}", err));
+        let rundir = xdg_runtime_dir().join("nixbox");
+        if !rundir.is_dir() {
+            fs::create_dir(&rundir).expect("Could not create nixbox runtime dir");
+        }
 
-    setup(&config);
-    sethostname("nixbox").unwrap_or_else(|err| eprintln!("Could not set hostname: {}", err));
+        let pidfile = rundir.join("server.pid");
+        // write_pidfile(pidfile).expect("Could not create pidfile");
 
-    println!("nixbox initialised");
-    loop {
-        sleep(Duration::from_secs(10));
+        force_symlink(&config.chroot_dir, rundir.join("chroot"))
+            .unwrap_or_else(|err| panic!("could not chroot symlink: {}", err));
+
+        setup(&config);
+        sethostname("nixbox").unwrap_or_else(|err| eprintln!("Could not set hostname: {}", err));
+
+        println!("nixbox initialised");
+        let envs = vec![("A", "B")];
+        run(
+            &config,
+            "/run/current-system/sw/bin/bash",
+            [
+                "--login",
+                "-c",
+                LOGIN_SCRIPT,
+                "--",
+                pidfile.to_str().unwrap(),
+            ],
+            envs,
+        );
+        None
     }
 }
 
-pub fn nixbox_pid() -> Option<i32> {
+fn get_pid() -> Option<i32> {
     let file = File::open(xdg_runtime_dir().join("nixbox/server.pid")).ok()?;
     let mut reader = BufReader::new(file);
     let mut line = String::new();
@@ -45,12 +76,11 @@ pub fn nixbox_pid() -> Option<i32> {
     line.trim().parse().ok()
 }
 
-pub fn nixbox_chroot() -> Option<PathBuf> {
+fn get_root() -> Option<PathBuf> {
     fs::read_link(xdg_runtime_dir().join("nixbox/chroot")).ok()
 }
 
-pub fn nixbox_env() -> Option<Vec<(OsString, OsString)>> {
-    let pid = nixbox_pid()?;
+fn get_env(pid: i32) -> Option<Vec<(OsString, OsString)>> {
     let file = File::open(format!("/proc/{}/environ", pid)).ok()?;
     let reader = BufReader::new(file);
     let mut env = vec![];
@@ -67,10 +97,11 @@ fn xdg_runtime_dir() -> PathBuf {
     PathBuf::from(&env::var_os("XDG_RUNTIME_DIR").expect("XDG_RUNTIME_DIR is not set"))
 }
 
+#[allow(dead_code)]
 fn write_pidfile(pidfile: impl AsRef<Path>) -> Option<()> {
     let pidfile = pidfile.as_ref();
 
-    if let Some(pid) = nixbox_pid() {
+    if let Some(pid) = get_pid() {
         if Path::new(&format!("/proc/{}", pid)).exists() {
             return None;
         }
