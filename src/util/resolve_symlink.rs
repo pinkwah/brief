@@ -16,7 +16,7 @@ pub fn resolve_symlink(
         current_dir()?.join(path)
     };
 
-    loop {
+    '_loop: loop {
         if path.symlink_metadata().is_err() {
             for parent in path.ancestors().skip(1) {
                 if !parent.is_symlink() {
@@ -25,7 +25,7 @@ pub fn resolve_symlink(
 
                 let resolved = resolve_symlink(mapping, parent)?;
                 path = resolved.join(path.strip_prefix(parent).unwrap());
-                break;
+                continue '_loop;
             }
         }
 
@@ -105,6 +105,36 @@ mod tests {
 
         let actual =
             resolve_symlink(&("/fake-directory", &path), &path.join("symlink/file")).unwrap();
+        assert_eq!(expect, actual);
+    }
+
+    #[test]
+    fn it_resolves_nested() {
+        let path: PathBuf = testdir!();
+        let expect = path.join("file");
+
+        File::create(&expect).unwrap();
+
+        // 'dir1/dir2' -> 'dir2'
+        fs::create_dir(path.join("dir1")).unwrap();
+        symlink("/fake-directory/dir2", path.join("dir1/dir2")).unwrap();
+
+        // 'dir2/dir3' -> 'dir3'
+        fs::create_dir(path.join("dir2")).unwrap();
+        symlink("/fake-directory/dir3", path.join("dir2/dir3")).unwrap();
+
+        // 'dir3/file' -> 'file'
+        fs::create_dir(path.join("dir3")).unwrap();
+        symlink("/fake-directory/file", path.join("dir3/file")).unwrap();
+
+        // Cannot resolve symlink
+        assert!(path.join("dir1/dir2/dir3/file").canonicalize().is_err());
+
+        let actual = resolve_symlink(
+            &("/fake-directory", &path),
+            &path.join("dir1/dir2/dir3/file"),
+        )
+        .unwrap();
         assert_eq!(expect, actual);
     }
 

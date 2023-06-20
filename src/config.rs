@@ -19,7 +19,7 @@ fn data_dir() -> Option<PathBuf> {
 fn current_system_dir() -> Option<PathBuf> {
     let datadir = data_dir()?.join("root");
     if datadir.symlink_metadata().is_ok() {
-        Some(datadir.join("sw/bin"))
+        Some(datadir)
     } else {
         None
     }
@@ -79,7 +79,7 @@ impl Config {
                 match current_system.clone() {
                     Some(x) => {
                         let mut os: OsString = x.into_os_string();
-                        os.push(":/usr/bin:/bin");
+                        os.push("/sw/bin:/usr/bin:/bin");
                         os
                     }
                     None => OsString::from("/usr/local/bin:/usr/bin:/bin"),

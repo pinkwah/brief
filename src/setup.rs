@@ -26,10 +26,23 @@ pub fn setup(config: &Config) {
 
     if let Some(nix_profile_dir) = &config.nix_profile {
         bind_nix_profile(&config.chroot_dir, &config.nix_home, config.nixbox_root());
-        bind_tmpfiles(nix_profile_dir);
+        bind_tmpfiles(
+            &config.chroot_dir,
+            &config.nix_home,
+            &nix_profile_dir.join("lib/tmpfiles.d"),
+        );
 
         if let Some(current_system) = &config.current_system {
-            bind_tmpfiles(current_system);
+            bind_tmpfiles(
+                &config.chroot_dir,
+                &config.nix_home,
+                &current_system.join("lib/tmpfiles.d"),
+            );
+            bind_tmpfiles(
+                &config.chroot_dir,
+                &config.nix_home,
+                &current_system.join("etc/tmpfiles.d"),
+            );
         }
     } else {
         bind_host(&config.chroot_dir);
@@ -188,11 +201,16 @@ fn bind_common(nix_dir: &Path, chroot_dir: &Path) {
     }
 }
 
-fn bind_tmpfiles(path: &Path) {
-    let Ok(dir) = fs::read_dir(path.join("lib/tmpfiles.d")) else { return; };
+fn bind_tmpfiles(chroot_dir: &Path, nix_dir: &Path, path: &Path) {
+    println!("try read {:?}", path);
+    let Ok(path) = resolve_symlink(&(&Path::new("/nix"), &nix_dir), path) else { return; };
+    println!("+++ read {:?}", path);
+    let Ok(dir) = fs::read_dir(path) else { return; };
+    println!("read {:?}", dir);
 
     for entry in dir {
         let path = entry.unwrap().path();
+        let Ok(path) = resolve_symlink(&(&Path::new("/nix"), &nix_dir), path) else { continue; };
         if !path.is_file() {
             continue;
         }
@@ -203,8 +221,11 @@ fn bind_tmpfiles(path: &Path) {
             let line = line.unwrap();
             let vec = line.split_ascii_whitespace().collect::<Vec<_>>();
             if let ["L+", target, "-", "-", "-", "-", source] = vec.as_slice() {
-                fs::create_dir_all(Path::new(target).parent().unwrap_or(Path::new("/"))).unwrap();
-                create_symlink(Path::new(source), Path::new(target));
+                let Some(target) = target.strip_prefix('/') else { continue; };
+                let target = chroot_dir.join(target);
+                println!("{:?} -> {:?}", source, target);
+                fs::create_dir_all(target.parent().unwrap_or(Path::new("/"))).unwrap();
+                create_symlink(Path::new(source), &target);
             }
         }
     }
