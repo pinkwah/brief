@@ -19,7 +19,7 @@ use clap::{Parser, Subcommand};
 use nix::fcntl::{open, OFlag};
 use nix::sched::{setns, CloneFlags};
 use nix::sys::stat::Mode;
-use nix::unistd::{chroot, fork, ForkResult};
+use nix::unistd::{chroot, fork, setsid, ForkResult};
 
 use crate::command::install;
 use crate::init::Service;
@@ -150,14 +150,17 @@ fn get_or_init_service() -> Service {
 
     match unsafe { fork() } {
         Ok(ForkResult::Parent { .. }) => wait_for_service(),
-        Ok(ForkResult::Child) => match unsafe { fork() } {
-            Ok(ForkResult::Parent { .. }) => exit(0),
-            Ok(ForkResult::Child) => {
-                Service::init().unwrap();
-                exit(0)
+        Ok(ForkResult::Child) => {
+            setsid().expect("Could not setsid");
+            match unsafe { fork() } {
+                Ok(ForkResult::Parent { .. }) => exit(0),
+                Ok(ForkResult::Child) => {
+                    Service::init().unwrap();
+                    exit(0)
+                }
+                Err(err) => panic!("fork failed: {}", err),
             }
-            Err(err) => panic!("fork failed: {}", err),
-        },
+        }
         Err(err) => panic!("fork failed: {}", err),
     }
 }
