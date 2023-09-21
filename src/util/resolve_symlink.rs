@@ -17,6 +17,10 @@ pub fn resolve_symlink(
     };
 
     '_loop: loop {
+        if let Ok(suffix) = path.strip_prefix(mount) {
+            path = onto.join(suffix);
+        }
+
         if path.symlink_metadata().is_err() {
             for parent in path.ancestors().skip(1) {
                 if !parent.is_symlink() {
@@ -32,25 +36,9 @@ pub fn resolve_symlink(
         if !path.is_symlink() {
             return path.canonicalize();
         }
-        let mut target = fs::read_link(&path)?;
+        let target = fs::read_link(&path)?;
 
-        let dir = match path.parent() {
-            Some(x) => x.to_path_buf(),
-            _ => PathBuf::from("/"),
-        };
-        if !target.is_absolute() {
-            target = dir.join(target);
-        }
-
-        path = if target.starts_with(mount) {
-            onto.join(
-                target
-                    .strip_prefix(mount)
-                    .expect("strip mount prefix from target"),
-            )
-        } else {
-            PathBuf::from(&target)
-        };
+        path = path.parent().unwrap_or(Path::new("/")).join(target);
     }
 }
 

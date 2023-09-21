@@ -1,4 +1,6 @@
 #!/usr/bin/env sh
 cd "$(realpath $(dirname $0))/.."
 mkdir -p "$PWD/tmp"
-podman run -it --userns=keep-id -e "HOME=/temphome" -e "CARGO_HOME=$PWD/vendor/cargo" -v "$PWD/tmp:/temphome:rw" -v "$PWD:$PWD" --security-opt label=disable -w $PWD rust cargo "$@"
+# podman run -it --userns=keep-id -e RUST_BACKTRACE=1 -e "HOME=/temphome" -e "CARGO_HOME=$PWD/vendor/cargo" -v "$PWD/tmp:/temphome:rw" -v "$PWD:$PWD" --security-opt label=disable -w $PWD rust:1.72 cargo "$@"
+#podman run -it --userns=keep-id -e RUST_BACKTRACE=1 -e "HOME=/temphome" -e "CARGO_HOME=$PWD/vendor/cargo" -v "$PWD/tmp:/temphome:rw" -v "$PWD:$PWD" --security-opt label=disable -w $PWD nixbox-rust cargo "$@"
+podman run -it --userns=keep-id -e RUST_BACKTRACE=1 -e "HOME=/temphome" -e "CARGO_HOME=$PWD/vendor/cargo" -v "$PWD/tmp:/temphome:rw" -v "$PWD:$PWD" --security-opt label=disable -w $PWD nixbox-rust dbus-run-session cargo "$@"

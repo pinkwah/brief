@@ -10,11 +10,17 @@ documentation = "https://github.com/pinkwah/nixbox"
 repository = "https://github.com/pinkwah/nixbox"
 
 [dependencies]
-nix = "0.26.2"
-libc = "0.2.139"
-clap = { version = "4.2.4", features = ["derive"] }
-psutil = "3.2.2"
+nix = "0.26"
+libc = "0.2"
+clap = { version = "4.2", features = ["derive"] }
+psutil = "3.2"
+zbus = {version="3.14", features=["tokio"]}
+tokio = {version="1.32", features=["full"]}
+directories = "5.0"
+ron = "0.8"
+serde = { version = "1", features = ["derive"] }
+once_cell = "1.18.0"
 
 [dev-dependencies]
-rstest = "0.17.0"
-testdir = "0.7.3"
+rstest = "0.17"
+testdir = "0.7"

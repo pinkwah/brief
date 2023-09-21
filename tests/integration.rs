@@ -11,6 +11,10 @@ fn run_nix_install() {
     let tempdir: PathBuf = testdir!();
 
     let result = Command::new("cargo")
+        .env("XDG_CACHE_HOME", tempdir.join("config"))
+        .env("XDG_CONFIG_HOME", tempdir.join("config"))
+        .env("XDG_DATA_HOME", tempdir.join("data"))
+        .env("XDG_STATE_HOME", tempdir.join("state"))
         .args(&[
             "run", "--target", TARGET,
             "install",
