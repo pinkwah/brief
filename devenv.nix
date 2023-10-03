@@ -1,5 +1,5 @@
 { pkgs, ... }:
 
 {
-  languages.rust.enable = true;
+  packages = with pkgs; [rustup stdenv.cc];
 }

@@ -12,9 +12,6 @@ use std::{future::pending, process::exit};
 use zbus::Error::NameTaken;
 use zbus::{Connection, ConnectionBuilder, Result};
 
-use crate::util::SharedLock;
-use crate::Config;
-
 static mut CHILD_PID: Lazy<Mutex<Option<Pid>>> = Lazy::new(|| Mutex::new(None));
 
 extern "C" fn handle_quit_signal(signal: libc::c_int) {
@@ -66,8 +63,8 @@ async fn async_start_server(child_pid: Pid, func: impl FnOnce()) -> ! {
     }
 }
 
-pub fn start_server(config: &Config) -> ! {
-    let child_pid = crate::guest::start_server(config);
+pub fn start_server() -> ! {
+    let child_pid = crate::guest::start_server();
     tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -75,12 +72,12 @@ pub fn start_server(config: &Config) -> ! {
         .block_on(async_start_server(child_pid, || ()));
 }
 
-pub fn start_server_fork(config: &Config) -> Pid {
+pub fn start_server_fork() -> Pid {
     let mut child_lock = crate::util::SharedLock::<()>::new();
     match unsafe { fork() }.expect("fork failed") {
         ForkResult::Child => {
             crate::util::terminate_on_parent_death();
-            let child_pid = crate::guest::start_server(&config);
+            let child_pid = crate::guest::start_server();
 
             crate::util::block_on(async_start_server(child_pid, || child_lock.send_value(())));
         }

@@ -1,11 +1,25 @@
 mod config;
 mod guest;
 mod host;
-mod install;
+// mod install;
+mod mapper;
 mod util;
 
 use clap::{Parser, Subcommand};
-use config::Config;
+
+#[macro_export]
+macro_rules! config {
+    () => {
+        (*$crate::config::CONFIG).lock().unwrap()
+    };
+}
+
+#[macro_export]
+macro_rules! mapper {
+    () => {
+        $crate::mapper::MAPPER.lock().unwrap()
+    };
+}
 
 pub use util::block_on;
 
@@ -21,14 +35,15 @@ struct Cli {
 enum Command {
     StartService,
 
-    Install,
-
     Run {
         #[arg(short, long)]
         env: Vec<String>,
 
         #[arg()]
-        rest: Vec<String>,
+        program: String,
+
+        #[arg()]
+        args: Vec<String>,
     },
 }
 
@@ -38,31 +53,12 @@ fn main() {
     use Command::*;
     match cli.command {
         StartService => {
-            let config = Config::from_file_or_default();
-            host::start_server(&config);
+            host::start_server();
         }
 
-        Install => {
-            install::install();
-        }
-
-        Run { env, .. } => {
-            println!("> {:?}", env);
-        }
+        Run { env, program, args } => block_on(async {
+            let client = guest::client().await.unwrap();
+            client.run(&program, &args).await.unwrap();
+        }),
     }
-
-    // let config = Config::from_file_or_default();
-    // // ensure_server(config);
-
-    // tokio::runtime::Builder::new_current_thread()
-    //     .enable_all()
-    //     .build()
-    //     .unwrap()
-    //     .block_on(async {
-    //         let client = host::client().await.unwrap();
-    //         println!("Return: {:?}", client.run("Foobar").await);
-
-    //         let client = guest::client().await.unwrap();
-    //         println!("Return: {:?}", client.run("ls", &["/"]).await);
-    //     });
 }

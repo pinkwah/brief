@@ -3,13 +3,15 @@ use std::fs;
 use std::io::Result;
 use std::path::{Path, PathBuf};
 
-pub fn resolve_symlink(
-    mapping: &(impl AsRef<Path>, impl AsRef<Path>),
-    path: impl AsRef<Path>,
-) -> Result<PathBuf> {
-    let mount = mapping.0.as_ref();
-    let onto = mapping.1.as_ref();
-    let path = path.as_ref();
+use crate::mapper::GuestPath;
+
+pub fn resolve_symlink<K, V, P>(mappings: &Vec<(K, V)>, path: P) -> Result<PathBuf>
+where
+    K: AsRef<GuestPath>,
+    V: AsRef<Path>,
+    P: AsRef<GuestPath>,
+{
+    let path = path.as_ref().as_path();
     let mut path = if path.is_absolute() {
         path.to_owned()
     } else {
@@ -17,8 +19,12 @@ pub fn resolve_symlink(
     };
 
     '_loop: loop {
-        if let Ok(suffix) = path.strip_prefix(mount) {
-            path = onto.join(suffix);
+        if let Some(new_path) = mappings.into_iter().find_map(|(mount, onto)| {
+            path.strip_prefix(mount.as_ref().as_path())
+                .map(|suffix| onto.as_ref().join(suffix))
+                .ok()
+        }) {
+            path = new_path;
         }
 
         if path.symlink_metadata().is_err() {
@@ -27,7 +33,7 @@ pub fn resolve_symlink(
                     continue;
                 }
 
-                let resolved = resolve_symlink(mapping, parent)?;
+                let resolved = resolve_symlink(mappings, GuestPath::new(parent))?;
                 path = resolved.join(path.strip_prefix(parent).unwrap());
                 continue '_loop;
             }

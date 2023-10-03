@@ -1,6 +1,6 @@
-use crate::{block_on, config::Config, guest, host};
-use std::{fs, io::Write, path::Path, process::Command};
+use crate::{block_on, config::CONFIG, guest, host};
 use nix::sys::signal::{kill, Signal};
+use std::{fs, io::Write, path::Path};
 use zbus::Result;
 
 const INSTALL_SCRIPT: &[u8] = r#"
@@ -18,13 +18,15 @@ export NIX_PATH=$HOME/.nix-defexpr/channels/nixos
 export NIXOS_CONFIG=/run/host$NIXOS_CONFIG
 export pathToConfig="$(nix-build '<nixpkgs/nixos>' --no-out-link -A system)"
 nix-env -p /nix/var/nix/profiles/system --set "$pathToConfig"
-"#.as_bytes();
+"#
+.as_bytes();
 
 const POSTINSTALL_SCRIPT: &[u8] = r#"
 set -eux
 
 /bin/sh
-"#.as_bytes();
+"#
+.as_bytes();
 
 const NIXOS_CONFIG: &[u8] = r#"
 { config, pkgs, ... }:
@@ -39,35 +41,34 @@ const NIXOS_CONFIG: &[u8] = r#"
   boot.loader.grub.enable = false;
   fileSystems."/".device = "/dev/null";
 }
-"#.as_bytes();
+"#
+.as_bytes();
 
 pub fn install() {
-    let mut config = Config::from_file_or_default();
-    config.use_host_root = true;
+    create_install_dir(&CONFIG.guest_home);
+    create_install_dir(&CONFIG.guest_nix);
 
-    create_install_dir(&config.guest_home);
-    create_install_dir(&config.guest_nix);
-
-    let host_pid = host::start_server_fork(&config);
+    let host_pid = host::start_server_fork();
 
     write_text("/tmp/nixbox-install.sh", INSTALL_SCRIPT);
     write_text("/tmp/nixbox-postinstall.sh", POSTINSTALL_SCRIPT);
-    write_text(&config.guest_nixos_config, NIXOS_CONFIG);
+    write_text(&CONFIG.guest_nixos_config, NIXOS_CONFIG);
 
     block_on(install_nixos()).unwrap();
-
-    config.use_host_root = false;
 
     kill(host_pid, Signal::SIGTERM).unwrap();
 
     std::thread::sleep(std::time::Duration::from_secs(1));
 
-    host::start_server_fork(&config);
+    host::start_server_fork();
 
     block_on(async {
         println!(">> Hello");
         let client = guest::client().await.unwrap();
-        println!(">> {:?}", client.run("/bin/sh", &["/tmp/nixbox-postinstall.sh"]).await);
+        println!(
+            ">> {:?}",
+            client.run("/bin/sh", &["/tmp/nixbox-postinstall.sh"]).await
+        );
     });
 }
 

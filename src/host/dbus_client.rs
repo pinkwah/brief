@@ -1,9 +1,9 @@
-use zbus::{Result, dbus_proxy};
+use zbus::{dbus_proxy, Result};
 
 #[dbus_proxy(
     interface = "pink.wah.NixboxHost1",
     default_service = "pink.wah.NixboxHost",
-    default_path = "/pink/wah/NixboxHost",
+    default_path = "/pink/wah/NixboxHost"
 )]
 trait HostClient {
     fn quit(&self) -> Result<()>;

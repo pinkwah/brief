@@ -1,0 +1,81 @@
+#!/bin/sh
+set -eu
+
+buildtype="debug"
+target="x86_64-unknown-linux-musl"
+from="ubuntu:20.04"
+src=$(realpath $(dirname $0)/..)
+CONTAINER_NAME=nixbox-test-env
+IMAGE_NAME=nixbox-test-env
+
+usage() {
+  echo "Usage: $0 <COMMAND>"
+  echo
+  echo "Commands:"
+  echo -e "  init\t\tInitialise podman container"
+}
+
+init() {
+  podman run --name "${CONTAINER_NAME}" --volume "$src/scripts/install":/tmp/install:Z -d "${from}" tail -f /dev/null
+
+  cat <<EOF | podman exec -i "${CONTAINER_NAME}" /bin/sh
+set -eux
+apt-get update -y
+apt-get install -y dbus shunit2 curl xz-utils
+
+useradd -m user
+su - user -c /tmp/install
+EOF
+
+  podman commit "${CONTAINER_NAME}" "${IMAGE_NAME}"
+
+  podman stop "${CONTAINER_NAME}"
+  podman rm "${CONTAINER_NAME}"
+}
+
+run() {
+  if ! podman image exists "${IMAGE_NAME}"; then
+    echo "Test environment does not exist. Running 'init'..."
+    init
+  fi
+
+  podman run --rm -it                                                                              \
+      --user 1000                                                                                  \
+      -v "$(pwd)/tests":/app/tests:Z                                                               \
+      -v "$(pwd)/target/${target}/${buildtype}/nixbox":/home/user/.local/share/nixbox/bin/nixbox:Z \
+      "${IMAGE_NAME}"                                                                              \
+      dbus-run-session bash
+}
+
+reset() {
+  podman rm -f "${IMAGE_NAME}"
+}
+
+usage() {
+  echo "Usage: $0 <command>"
+  echo
+  echo "Commands:"
+  echo -e "  init\t\tCreate a fresh test environment image."
+  echo -e "  reset\t\tDelete the test environment image."
+  echo -e "  run\t\tRun the test script within the test environment."
+}
+
+case "${1:-}" in
+"init")
+  init
+  ;;
+
+"reset")
+  reset
+  ;;
+
+"run")
+  shift
+  run "$@"
+  ;;
+
+*)
+  usage
+  exit 1
+  ;;
+esac

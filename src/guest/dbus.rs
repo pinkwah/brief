@@ -1,10 +1,10 @@
 use std::{error::Error, future::pending};
 
-use zbus::{ConnectionBuilder, dbus_interface};
 use super::Guest;
+use zbus::{dbus_interface, ConnectionBuilder};
 
 struct DBusGuest {
-    guest: Guest
+    guest: Guest,
 }
 
 #[dbus_interface(name = "pink.wah.NixboxGuest1")]

@@ -1,10 +1,17 @@
 use std::{
     fmt,
-    path::{Path, PathBuf}, fs::{self, Permissions}, io::ErrorKind, os::unix::prelude::PermissionsExt,
+    fs::{self, Permissions},
+    io::ErrorKind,
+    os::unix::prelude::PermissionsExt,
+    path::{Path, PathBuf}, sync::Mutex,
 };
 
+use crate::mapper::{HostPath, HostPathBuf};
 use directories::ProjectDirs;
+use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
+
+pub static CONFIG: Lazy<Mutex<Config>> = Lazy::new(|| Mutex::new(Config::from_file_or_default()));
 
 fn runtime_dir_(project_dirs: &ProjectDirs) -> PathBuf {
     if let Some(path) = project_dirs.runtime_dir() {
@@ -14,7 +21,7 @@ fn runtime_dir_(project_dirs: &ProjectDirs) -> PathBuf {
     match fs::create_dir(&path) {
         Ok(()) => {
             return path.to_path_buf();
-        },
+        }
         Err(err) => {
             if err.kind() == ErrorKind::AlreadyExists {
                 fs::set_permissions(&path, Permissions::from_mode(0700)).unwrap();
@@ -51,7 +58,8 @@ impl fmt::Display for UserConfig {
 
 impl UserConfig {
     pub fn from_file_or_default() -> Self {
-        let project_dirs = ProjectDirs::from("", "", "nixbox").expect("could not create ProjectDirs");
+        let project_dirs =
+            ProjectDirs::from("", "", "nixbox").expect("could not create ProjectDirs");
         let path = project_dirs.config_dir().join("config");
         std::fs::read_to_string(path)
             .ok()
@@ -63,11 +71,10 @@ impl UserConfig {
 #[derive(Clone)]
 pub struct Config {
     pub user_config: UserConfig,
-    pub guest_chroot: PathBuf,
-    pub guest_home: PathBuf,
-    pub guest_nix: PathBuf,
-    pub guest_nixos_config: PathBuf,
-    pub use_host_root: bool,
+    pub chroot: HostPathBuf,
+    pub home: HostPathBuf,
+    pub nix: HostPathBuf,
+    pub nixos_config: HostPathBuf,
 }
 
 impl Config {
@@ -75,18 +82,17 @@ impl Config {
         let dirs = ProjectDirs::from("pink", "Wah", "Nixbox Dev").unwrap();
         let runtime_dir = runtime_dir_(&dirs);
 
-        let guest_chroot = runtime_dir.join("chroot");
-        let guest_home = dirs.data_dir().join("home");
-        let guest_nix = dirs.data_dir().join("nix");
-        let guest_nixos_config = dirs.data_dir().join("nixos-config");
+        let chroot = runtime_dir.join("chroot");
+        let home = dirs.data_dir().join("home");
+        let nix = dirs.data_dir().join("nix");
+        let nixos_config = dirs.data_dir().join("nixos-config");
 
         Self {
             user_config,
-            guest_chroot,
-            guest_home,
-            guest_nix,
-            guest_nixos_config,
-            use_host_root: true,
+            chroot,
+            home,
+            nix,
+            nixos_config,
         }
     }
 
@@ -95,8 +101,16 @@ impl Config {
         Self::new(user_config)
     }
 
-    pub fn guest_resolve_symlink(&self, path: impl AsRef<Path>) -> std::io::Result<PathBuf> {
-        crate::util::resolve_symlink(&(&Path::new("/nix"), &self.guest_nix), path)
+    pub fn chroot(&self) -> &HostPath {
+        &self.chroot
+    }
+
+    pub fn home(&self) -> &HostPath {
+        &self.home
+    }
+
+    pub fn nix(&self) -> &Path {
+        &self.nix
     }
 }
 
