@@ -1,13 +1,13 @@
 [package]
-name = "nixbox"
-description = "Install & Run nix without root permissions"
+name = "brief-cli"
+description = "C"
 license = "MIT"
 version = "0.1.0"
 authors = ["Tenne <me@wah.pink>"]
 edition = "2018"
-homepage = "https://github.com/pinkwah/nixbox"
-documentation = "https://github.com/pinkwah/nixbox"
-repository = "https://github.com/pinkwah/nixbox"
+homepage = "https://github.com/pinkwah/brief"
+documentation = "https://github.com/pinkwah/brief"
+repository = "https://github.com/pinkwah/brief"
 
 [dependencies]
 nix = "0.26.2"

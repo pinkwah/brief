@@ -100,6 +100,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
 
 [[package]]
+name = "brief-cli"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "libc",
+ "nix 0.26.2",
+ "psutil",
+ "rstest",
+ "testdir",
+]
+
+[[package]]
 name = "bumpalo"
 version = "3.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -508,18 +520,6 @@ dependencies = [
  "memoffset 0.7.1",
  "pin-utils",
  "static_assertions",
-]
-
-[[package]]
-name = "nixbox"
-version = "0.1.0"
-dependencies = [
- "clap",
- "libc",
- "nix 0.26.2",
- "psutil",
- "rstest",
- "testdir",
 ]
 
 [[package]]
