@@ -16,5 +16,5 @@ clap = { version = "4.2.4", features = ["derive"] }
 psutil = "3.2.2"
 
 [dev-dependencies]
-rstest = "0.17.0"
+rstest = "0.18.2"
 testdir = "0.7.3"
