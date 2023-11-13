@@ -10,7 +10,7 @@ documentation = "https://github.com/pinkwah/nixbox"
 repository = "https://github.com/pinkwah/nixbox"
 
 [dependencies]
-nix = "0.26.2"
+nix = "0.27.1"
 libc = "0.2.139"
 clap = { version = "4.2.4", features = ["derive"] }
 psutil = "3.2.2"
