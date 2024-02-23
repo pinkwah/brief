@@ -24,26 +24,8 @@ pub fn setup(config: &Config) {
     unshare(CloneFlags::CLONE_NEWNS | CloneFlags::CLONE_NEWUSER | CloneFlags::CLONE_NEWUTS)
         .expect("unshare failed");
 
-    if let Some(nix_profile_dir) = &config.nix_profile {
+    if let Some(_) = &config.nix_profile {
         bind_nix_profile(&config.chroot_dir, &config.nix_home, config.nixbox_root());
-        bind_tmpfiles(
-            &config.chroot_dir,
-            &config.nix_home,
-            &nix_profile_dir.join("lib/tmpfiles.d"),
-        );
-
-        if let Some(current_system) = &config.current_system {
-            bind_tmpfiles(
-                &config.chroot_dir,
-                &config.nix_home,
-                &current_system.join("lib/tmpfiles.d"),
-            );
-            bind_tmpfiles(
-                &config.chroot_dir,
-                &config.nix_home,
-                &current_system.join("etc/tmpfiles.d"),
-            );
-        }
     } else {
         bind_host(&config.chroot_dir);
     }

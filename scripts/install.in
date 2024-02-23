@@ -1,0 +1,41 @@
+#!/bin/sh
+
+{
+oops() {
+    echo "$0:" "$@" >&2
+    exit 1
+}
+
+umask 0022
+
+
+tmpDir="$(mktemp -d -t brief-binary-tarball-unpack.XXXXXXXXXX || \
+          oops "Can't create temporary directory for downloading the Brief binary tarball")"
+cleanup() {
+    rm -rf "$tmpDir"
+}
+trap cleanup EXIT INT QUIT TERM
+
+case "$(uname -s).$(uname -m)" in
+    Linux.x86_64)
+        hash=@tarballHash_x86_64-linux@
+        path=@tarballPath_x86_64-linux@
+        system=x86_64-linux
+        ;;
+    *) oops "sorry, there is no binary distribution of Nix for your platform";;
+esac
+
+# Use this command-line option to fetch the tarballs using nar-serve or Cachix
+if [ "${1:-}" = "--tarball-url-prefix" ]; then
+    if [ -z "${2:-}" ]; then
+        oops "missing argument for --tarball-url-prefix"
+    fi
+    url=${2}/${path}
+    shift 2
+else
+    oops "No URL exists yet, specify --tarball-url-prefix explicitly"
+fi
+
+tarball=$tmpDir/nix-@nixVersion@-$system.tar.xz
+
+}
