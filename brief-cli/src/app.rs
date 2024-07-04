@@ -28,7 +28,9 @@ pub fn list(config: &Config) -> ExitCode {
         let entry = entry
             .and_then(|x| config.resolve_symlink(x.path()))
             .expect("Error occurred while finding applications");
-        let Some(desktop) = DesktopFile::parse_file(&entry) else { continue; };
+        let Some(desktop) = DesktopFile::parse_file(&entry) else {
+            continue;
+        };
 
         let id: String = entry.file_stem().unwrap().to_str().unwrap().to_string();
 

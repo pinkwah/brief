@@ -21,7 +21,9 @@ pub fn status() -> ExitCode {
     println!("\nPID\t\tCOMMAND");
     for entry in fs::read_dir("/proc").expect("Coult not read /proc") {
         let Ok(entry) = entry else { continue };
-        let Ok(entry_mntid) = fs::read_link(entry.path().join("ns/mnt")) else { continue; };
+        let Ok(entry_mntid) = fs::read_link(entry.path().join("ns/mnt")) else {
+            continue;
+        };
         if entry_mntid == mntid {
             let mut cmdline = String::new();
             File::open(entry.path().join("cmdline"))

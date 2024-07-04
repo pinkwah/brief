@@ -10,15 +10,14 @@ mod util;
 
 use std::env;
 use std::ffi::{OsStr, OsString};
+use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::process::{exit, ExitCode};
 use std::thread::sleep;
 use std::time::Duration;
 
 use clap::{Parser, Subcommand};
-use nix::fcntl::{open, OFlag};
 use nix::sched::{setns, CloneFlags};
-use nix::sys::stat::Mode;
 use nix::unistd::{chroot, fork, ForkResult};
 
 use crate::command::install;
@@ -172,11 +171,8 @@ fn enterns(service: &Service) {
 
     for group in ["user", "mnt", "uts"] {
         let entry = ns.join(group);
-        let fd = open(&entry, OFlag::O_RDONLY | OFlag::O_CLOEXEC, unsafe {
-            Mode::from_bits_unchecked(0)
-        })
-        .unwrap();
-        setns(fd, unsafe { CloneFlags::from_bits_unchecked(0) })
+        let fd = File::open(&entry).unwrap();
+        setns(fd, CloneFlags::empty())
             .unwrap_or_else(|err| panic!("Could not setns {}: {}", entry.display(), err));
     }
 
